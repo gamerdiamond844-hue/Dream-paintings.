@@ -1,12 +1,17 @@
 const { Pool } = require('pg');
 
-const connectionString = process.env.DATABASE_URL ||
+const rawConnection = process.env.DATABASE_URL ||
   `postgresql://${process.env.PGUSER || 'postgres'}:${process.env.PGPASSWORD || 'password'}@${process.env.PGHOST || 'localhost'}:${process.env.PGPORT || 5432}/${process.env.PGDATABASE || 'dream_paintings'}`;
 
+// Strip sslmode from URL — SSL is handled via the ssl config object below
+const connectionString = rawConnection.replace(/[?&]sslmode=[^&]*/g, '').replace(/\?$/, '');
+
 const isNeon = connectionString.includes('neon.tech');
+const useSSL = isNeon || process.env.DATABASE_SSL === 'true';
+
 const pool = new Pool({
   connectionString,
-  ssl: (isNeon || process.env.DATABASE_SSL === 'true') ? { rejectUnauthorized: false } : false,
+  ssl: useSSL ? { rejectUnauthorized: false } : false,
 });
 
 const initDB = async () => {
