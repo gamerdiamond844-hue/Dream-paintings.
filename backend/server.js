@@ -42,6 +42,10 @@ const corsOptions = {
 const io = new Server(server, {
   cors: corsOptions,
   pingTimeout: 60000,
+  pingInterval: 25000,
+  transports: ['websocket', 'polling'],
+  allowUpgrades: true,
+  cookie: false,
 });
 
 app.use(cors(corsOptions));
@@ -165,7 +169,7 @@ module.exports = { io };
 
 const PORT = process.env.PORT || 5000;
 initDB().then(() => {
-  server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+  server.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT}`));
 }).catch(err => {
   console.error('DB init failed:', err.message);
   process.exit(1);
