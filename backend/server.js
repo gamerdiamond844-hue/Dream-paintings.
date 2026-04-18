@@ -130,13 +130,14 @@ io.on('connection', (socket) => {
   // All call events are routed to the target user's personal room so they
   // arrive regardless of which conversation room they have joined.
 
-  socket.on('call_user', ({ targetUserId, offer, callerName, callerAvatar, callType }) => {
+  socket.on('call_user', ({ targetUserId, offer, callerName, callerAvatar, callType, isRestart }) => {
     socket.to(`user_${targetUserId}`).emit('incoming_call', {
       callerId: userId,
       callerName,
       callerAvatar,
       callType: callType || 'voice',
       offer,
+      isRestart: isRestart || false,
     });
   });
 

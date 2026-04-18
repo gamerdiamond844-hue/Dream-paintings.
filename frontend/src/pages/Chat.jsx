@@ -44,6 +44,7 @@ export default function Chat() {
     callState, callType, remoteUser: callRemoteUser,
     isMuted, isCamOff, callDuration, fmt,
     localVideoRef, remoteVideoRef, remoteAudioRef, remoteStreamRef,
+    netQuality, permError,
     startCall, acceptCall, rejectCall, endCall,
     toggleMute, toggleCamera, switchCamera,
   } = useCall({ socket, currentUser: user });
@@ -522,6 +523,8 @@ export default function Chat() {
         isCamOff={isCamOff}
         callDuration={callDuration}
         fmt={fmt}
+        netQuality={netQuality}
+        permError={permError}
         localVideoRef={localVideoRef}
         remoteVideoRef={remoteVideoRef}
         remoteAudioRef={remoteAudioRef}
