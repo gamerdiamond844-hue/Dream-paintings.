@@ -5,6 +5,11 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
+    // Optimize for production
+    minify: 'terser',
+    sourcemap: false, // Disable in production for security
+    reportCompressedSize: true,
+    
     // Split large vendor libs into separate cached chunks
     rollupOptions: {
       output: {
@@ -16,9 +21,21 @@ export default defineConfig({
         },
       },
     },
+    
     // Raise warning limit — three.js is large by nature
     chunkSizeWarningLimit: 1000,
+    
+    // CSS code splitting
+    cssCodeSplit: true,
+    
+    // Enable gzip compression reporting
+    terserOptions: {
+      compress: {
+        drop_console: process.env.NODE_ENV === 'production',
+      },
+    },
   },
+  
   server: {
     proxy: {
       '/api': 'http://localhost:5000',
@@ -29,3 +46,4 @@ export default defineConfig({
     },
   },
 })
+
