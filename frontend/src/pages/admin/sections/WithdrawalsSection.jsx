@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { CheckCircle, XCircle, Clock, PauseCircle, Banknote, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../../utils/api';
@@ -258,8 +258,8 @@ export default function WithdrawalsSection() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {withdrawals.map(w => (
-                  <>
-                    <tr key={w.id} className="hover:bg-gray-50 transition-colors">
+                  <React.Fragment key={w.id}>
+                    <tr className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3">
                         <p className="font-medium text-gray-900">{w.seller_name}</p>
                         <p className="text-xs text-gray-400">{w.seller_email}</p>
@@ -305,13 +305,13 @@ export default function WithdrawalsSection() {
                       </td>
                     </tr>
                     {expandedAudit === w.id && (
-                      <tr key={`audit-${w.id}`}>
+                      <tr>
                         <td colSpan={6} className="p-0">
                           <AuditTimeline id={w.id} />
                         </td>
                       </tr>
                     )}
-                  </>
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

@@ -82,7 +82,11 @@ const getEarnings = async (req, res) => {
 
     const withdrawable = Math.max(0, totalEarnings - totalPaid - pending);
 
-    res.json({ totalEarnings, withdrawable, pending });
+    res.json({
+      totalEarnings: parseFloat(totalEarnings.toFixed(2)),
+      withdrawable: parseFloat(withdrawable.toFixed(2)),
+      pending: parseFloat(pending.toFixed(2)),
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -224,10 +228,8 @@ const raiseDispute = async (req, res) => {
       return res.status(400).json({ message: 'Disputes can only be raised on rejected or on-hold requests.' });
 
     await pool.query(
-      `INSERT INTO notifications (user_id, message) VALUES (
-        (SELECT id FROM users WHERE role='admin' LIMIT 1),
-        $1
-      )`,
+      `INSERT INTO notifications (user_id, message)
+       SELECT id, $1 FROM users WHERE role='admin'`,
       [`Seller raised a dispute on withdrawal #${req.params.id}: ${reason}`]
     );
     res.json({ message: 'Dispute raised. DreamPaintings Team will review it.' });

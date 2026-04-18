@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Wallet, AlertCircle, CheckCircle, XCircle, Clock, PauseCircle, Banknote, ChevronDown, ChevronUp, Download, MessageSquare } from 'lucide-react';
+import { Wallet, AlertCircle, CheckCircle, XCircle, Clock, PauseCircle, Banknote, ChevronDown, ChevronUp, MessageSquare, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../utils/api';
 
@@ -71,17 +71,60 @@ function AmountBreakdown({ w }) {
   );
 }
 
+// ── Dispute Modal (replaces window.prompt) ────────────────────────────────────
+function DisputeModal({ withdrawalId, onClose, onDone }) {
+  const [reason, setReason] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!reason.trim()) return toast.error('Please describe your dispute.');
+    setLoading(true);
+    try {
+      await api.post(`/withdrawals/${withdrawalId}/dispute`, { reason });
+      toast.success('Dispute raised. DreamPaintings Team will review it.');
+      onDone();
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to raise dispute');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
+        <h3 className="font-bold text-lg text-gray-900 mb-2">Raise a Dispute</h3>
+        <p className="text-sm text-gray-500 mb-4">Describe your issue clearly. DreamPaintings Team will review and respond.</p>
+        <textarea
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          rows={4}
+          placeholder="Explain your dispute in detail..."
+          className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm resize-none outline-none focus:ring-2 focus:ring-red-200 mb-4"
+        />
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">Cancel</button>
+          <button onClick={handleSubmit} disabled={loading}
+            className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700 disabled:opacity-50">
+            {loading ? 'Submitting…' : 'Submit Dispute'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function WithdrawalCard({ w, onDispute }) {
   const [open, setOpen] = useState(false);
   const [timeline, setTimeline] = useState(null);
 
   const loadTimeline = async () => {
-    if (timeline) { setOpen(!open); return; }
+    if (timeline) { setOpen(o => !o); return; }
     try {
       const r = await api.get(`/withdrawals/${w.id}`);
       setTimeline(r.data.timeline || []);
       setOpen(true);
-    } catch { setOpen(!open); }
+    } catch { setOpen(o => !o); }
   };
 
   return (
@@ -119,7 +162,7 @@ function WithdrawalCard({ w, onDispute }) {
               <div key={i} className="flex gap-3 text-xs">
                 <div className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5 flex-shrink-0" />
                 <div>
-                  <p className="font-medium text-gray-700 capitalize">{t.action.replace('_', ' ')}</p>
+                  <p className="font-medium text-gray-700 capitalize">{t.action.replace(/_/g, ' ')}</p>
                   {t.reason && <p className="text-gray-500 mt-0.5">{t.reason}</p>}
                   <p className="text-gray-400 mt-0.5">{t.performed_by} · {new Date(t.created_at).toLocaleString('en-IN')}</p>
                 </div>
@@ -139,7 +182,9 @@ export default function WithdrawalPage() {
   const [showForm, setShowForm] = useState(false);
   const [showPolicy, setShowPolicy] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showAccountNumber, setShowAccountNumber] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [disputeId, setDisputeId] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -163,7 +208,7 @@ export default function WithdrawalPage() {
     setShowConfirm(false);
     setLoading(true);
     try {
-      await api.post('/withdrawals', form);
+      await api.post('/withdrawals', { ...form, ifsc_code: form.ifsc_code.toUpperCase() });
       toast.success('Withdrawal request submitted!');
       setForm(INITIAL_FORM);
       setShowForm(false);
@@ -174,25 +219,12 @@ export default function WithdrawalPage() {
     setLoading(false);
   };
 
-  const handleDispute = async (id) => {
-    const reason = prompt('Describe your dispute:');
-    if (!reason) return;
-    try {
-      await api.post(`/withdrawals/${id}/dispute`, { reason });
-      toast.success('Dispute raised. DreamPaintings Team will review it.');
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to raise dispute');
-    }
-  };
-
   const amt = parseFloat(form.amount) || 0;
   const available = parseFloat(earnings?.withdrawable ?? 0);
   const amtError = amt > 0
-    ? amt < 500
-      ? 'Minimum ₹500'
-      : amt > available
-        ? 'Exceeds available balance'
-        : null
+    ? amt < 500 ? 'Minimum ₹500'
+    : amt > available ? 'Exceeds available balance'
+    : null
     : null;
 
   return (
@@ -235,7 +267,7 @@ export default function WithdrawalPage() {
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-8">
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-semibold text-lg text-gray-900">New Withdrawal Request</h2>
-              <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-gray-600 text-sm">Cancel</button>
+              <button onClick={() => { setShowForm(false); setForm(INITIAL_FORM); }} className="text-gray-400 hover:text-gray-600 text-sm">Cancel</button>
             </div>
 
             {available < 500 && (
@@ -248,7 +280,6 @@ export default function WithdrawalPage() {
               {[
                 { name: 'full_name', label: 'Full Name (as per bank)', placeholder: 'As on bank account' },
                 { name: 'bank_name', label: 'Bank Name', placeholder: 'e.g. State Bank of India' },
-                { name: 'account_number', label: 'Account Number', placeholder: 'Bank account number', type: 'password' },
                 { name: 'ifsc_code', label: 'IFSC Code', placeholder: 'e.g. SBIN0001234' },
                 { name: 'upi_id', label: 'UPI ID (optional)', placeholder: 'e.g. name@upi' },
                 { name: 'amount', label: 'Amount to Withdraw (₹)', placeholder: 'Min ₹500', type: 'number' },
@@ -264,6 +295,29 @@ export default function WithdrawalPage() {
                   {name === 'amount' && amtError && <p className="text-xs text-red-500 mt-1">{amtError}</p>}
                 </div>
               ))}
+
+              {/* Account number with show/hide toggle */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Account Number</label>
+                <div className="relative">
+                  <input
+                    type={showAccountNumber ? 'text' : 'password'}
+                    name="account_number"
+                    value={form.account_number}
+                    onChange={handleChange}
+                    placeholder="Bank account number"
+                    className="w-full px-4 py-2.5 pr-10 border border-gray-200 rounded-xl text-sm outline-none focus:ring-2 focus:ring-red-200"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAccountNumber(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showAccountNumber ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
               <div className="sm:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Note (optional)</label>
                 <textarea name="note" value={form.note} onChange={handleChange} rows={2}
@@ -311,10 +365,16 @@ export default function WithdrawalPage() {
           <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl">
               <h3 className="font-bold text-lg text-gray-900 mb-2">Confirm Withdrawal</h3>
-              <p className="text-sm text-gray-600 mb-4">
-                You are requesting a withdrawal of <strong>₹{amt.toLocaleString('en-IN')}</strong> to <strong>{form.bank_name}</strong>.
-                This will be reviewed by DreamPaintings Team.
+              <p className="text-sm text-gray-600 mb-1">
+                Amount: <strong>₹{amt.toLocaleString('en-IN')}</strong>
               </p>
+              <p className="text-sm text-gray-600 mb-1">
+                Bank: <strong>{form.bank_name}</strong>
+              </p>
+              <p className="text-sm text-gray-600 mb-4">
+                IFSC: <strong>{form.ifsc_code.toUpperCase()}</strong>
+              </p>
+              <p className="text-xs text-gray-400 mb-4">This will be reviewed by DreamPaintings Team. Please ensure bank details are correct.</p>
               <div className="flex gap-3">
                 <button onClick={() => setShowConfirm(false)} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50">Cancel</button>
                 <button onClick={handleSubmit} className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-semibold hover:bg-red-700">Confirm</button>
@@ -333,12 +393,21 @@ export default function WithdrawalPage() {
           ) : (
             <div className="space-y-4">
               {withdrawals.map(w => (
-                <WithdrawalCard key={w.id} w={w} onDispute={handleDispute} />
+                <WithdrawalCard key={w.id} w={w} onDispute={setDisputeId} />
               ))}
             </div>
           )}
         </div>
       </div>
+
+      {/* Dispute Modal */}
+      {disputeId && (
+        <DisputeModal
+          withdrawalId={disputeId}
+          onClose={() => setDisputeId(null)}
+          onDone={load}
+        />
+      )}
     </div>
   );
 }
