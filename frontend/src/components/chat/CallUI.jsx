@@ -333,9 +333,24 @@ export default function CallUI({
 }) {
   const isVideo = callType === 'video';
 
-  // Keep audio element in sync with remote stream every render
+  // Re-attach remote stream to audio element on every render
+  // This is intentional — remoteAudioRef is null when ontrack fires
+  // so we keep trying until the <audio> element is mounted
   useEffect(() => {
     const el     = remoteAudioRef?.current;
+    const stream = remoteStreamRef?.current;
+    if (el && stream && el.srcObject !== stream) {
+      console.log('[CallUI] attaching remote stream to audio element');
+      el.srcObject = stream;
+      el.muted = false;          // MUST be unmuted to hear remote audio
+      el.volume = 1.0;
+      el.play().catch(e => console.warn('[CallUI] audio play failed:', e.message));
+    }
+  });
+
+  // Also attach to video element on every render for video calls
+  useEffect(() => {
+    const el     = remoteVideoRef?.current;
     const stream = remoteStreamRef?.current;
     if (el && stream && el.srcObject !== stream) {
       el.srcObject = stream;
@@ -351,8 +366,15 @@ export default function CallUI({
 
   return (
     <>
-      {/* Hidden audio — carries remote audio for voice calls */}
-      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
+      {/* Hidden audio — carries remote audio for ALL call types
+          muted=false and volume=1 are critical for bi-directional audio */}
+      <audio
+        ref={remoteAudioRef}
+        autoPlay
+        playsInline
+        muted={false}
+        style={{ display: 'none' }}
+      />
 
       {callState === CALL_STATE.RINGING && (
         <IncomingCallPopup

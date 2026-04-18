@@ -96,6 +96,7 @@ export function useCall({ socket, currentUser }) {
   []);
 
   // ── Attach remote stream to every output element ──────────────────────────
+  // Called both from ontrack AND from a render-time effect in CallUI
   const attachRemote = useCallback((stream) => {
     if (!stream) return;
     remoteStreamRef.current = stream;
@@ -103,10 +104,14 @@ export function useCall({ socket, currentUser }) {
     console.log('[RTC] remote stream tracks:',
       tracks.map(t => `${t.kind} enabled=${t.enabled} muted=${t.muted}`));
 
+    // Attach to video element if available
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = stream;
       remoteVideoRef.current.play().catch(() => {});
     }
+    // Attach to audio element if available
+    // NOTE: remoteAudioRef may be null here if overlay not yet rendered —
+    // CallUI's useEffect will re-attach on every render until it succeeds
     if (remoteAudioRef.current) {
       remoteAudioRef.current.srcObject = stream;
       remoteAudioRef.current.play().catch(() => {});
@@ -244,8 +249,6 @@ export function useCall({ socket, currentUser }) {
   }, []);
 
   // ── Build RTCPeerConnection ───────────────────────────────────────────────
-  // NOTE: cleanup, attachRemote, startQuality, flushIce, startTimer, setCS
-  //       are all stable useCallback refs — safe to use inside createPC
   const createPC = useCallback((targetId) => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
@@ -260,6 +263,16 @@ export function useCall({ socket, currentUser }) {
 
     pc.ontrack = (ev) => {
       console.log('[RTC] ontrack:', ev.track.kind, 'streams:', ev.streams.length);
+
+      // Always ensure the track is enabled
+      ev.track.enabled = true;
+
+      // Listen for unmute — some browsers deliver tracks muted initially
+      ev.track.onunmute = () => {
+        console.log('[RTC] track unmuted:', ev.track.kind);
+        if (remoteStreamRef.current) attachRemote(remoteStreamRef.current);
+      };
+
       if (ev.streams?.[0]) {
         attachRemote(ev.streams[0]);
       } else {
@@ -277,6 +290,8 @@ export function useCall({ socket, currentUser }) {
         setCS(CALL_STATE.CONNECTED);
         startTimer();
         startQuality();
+        // Re-attach remote stream now that UI is fully rendered
+        if (remoteStreamRef.current) attachRemote(remoteStreamRef.current);
       } else if (s === 'connecting') {
         setCS(CALL_STATE.CONNECTING);
       } else if (s === 'disconnected') {
@@ -385,15 +400,20 @@ export function useCall({ socket, currentUser }) {
     const pc = createPC(callerId);
     pcRef.current = pc;
 
+    // CRITICAL: add tracks BEFORE setRemoteDescription
     stream.getTracks().forEach(t => {
       pc.addTrack(t, stream);
-      console.log('[RTC] added local track (callee):', t.kind);
+      console.log('[RTC] added local track (callee):', t.kind, 'enabled:', t.enabled);
     });
 
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
     await flushIce();
 
-    const answer = await pc.createAnswer();
+    // createAnswer with explicit sendrecv direction — ensures callee audio goes to caller
+    const answer = await pc.createAnswer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: inType === 'video',
+    });
     await pc.setLocalDescription(answer);
 
     callTypeRef.current   = inType;
