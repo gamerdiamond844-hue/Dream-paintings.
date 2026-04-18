@@ -223,7 +223,7 @@ export function VideoCallOverlay({
   localVideoRef, remoteVideoRef, remoteStreamRef,
   onMute, onCam, onSwitch, onEnd,
 }) {
-  const hasMultipleCams = useRef(false);
+  const hasMultipleCams    = useRef(false);
   const [remoteVideoActive, setRemoteVideoActive] = useState(false);
 
   useEffect(() => {
@@ -232,16 +232,19 @@ export function VideoCallOverlay({
     }).catch(() => {});
   }, []);
 
-  // Attach remote stream when overlay mounts or stream changes
+  // Attach remote stream on mount and when stream ref changes
+  // Does NOT call setState — avoids infinite re-render loop
   useEffect(() => {
     const el     = remoteVideoRef.current;
     const stream = remoteStreamRef?.current;
-    if (el && stream) {
+    if (el && stream && el.srcObject !== stream) {
       el.srcObject = stream;
       el.play().catch(() => {});
-      setRemoteVideoActive(stream.getVideoTracks().some(t => t.enabled && !t.muted));
     }
-  }); // run every render — refs are not reactive
+    // Check video activity without triggering re-render
+    const hasVideo = stream?.getVideoTracks().some(t => t.enabled && !t.muted) ?? false;
+    setRemoteVideoActive(hasVideo);
+  }); // run every render — refs are not reactive, but guard with srcObject check
 
   return (
     <div className="fixed inset-0 z-[60] bg-black flex flex-col">
@@ -333,22 +336,22 @@ export default function CallUI({
 }) {
   const isVideo = callType === 'video';
 
-  // Re-attach remote stream to audio element on every render
-  // This is intentional — remoteAudioRef is null when ontrack fires
-  // so we keep trying until the <audio> element is mounted
+  // Attach remote stream to audio element on every render
+  // muted is set via DOM ref — React's muted={false} JSX prop is ignored by browsers
   useEffect(() => {
     const el     = remoteAudioRef?.current;
     const stream = remoteStreamRef?.current;
-    if (el && stream && el.srcObject !== stream) {
-      console.log('[CallUI] attaching remote stream to audio element');
+    if (!el || !stream) return;
+    if (el.srcObject !== stream) {
       el.srcObject = stream;
-      el.muted = false;          // MUST be unmuted to hear remote audio
-      el.volume = 1.0;
-      el.play().catch(e => console.warn('[CallUI] audio play failed:', e.message));
+      el.play().catch(e => console.warn('[CallUI] audio play:', e.message));
     }
+    // Always force unmuted via DOM — JSX muted prop bug in React
+    el.muted  = false;
+    el.volume = 1.0;
   });
 
-  // Also attach to video element on every render for video calls
+  // Attach remote stream to video element on every render
   useEffect(() => {
     const el     = remoteVideoRef?.current;
     const stream = remoteStreamRef?.current;
@@ -366,13 +369,12 @@ export default function CallUI({
 
   return (
     <>
-      {/* Hidden audio — carries remote audio for ALL call types
-          muted=false and volume=1 are critical for bi-directional audio */}
+      {/* Hidden audio element — muted set via DOM ref, NOT JSX prop
+          React ignores muted={false} — must use el.muted = false in effect */}
       <audio
         ref={remoteAudioRef}
         autoPlay
         playsInline
-        muted={false}
         style={{ display: 'none' }}
       />
 

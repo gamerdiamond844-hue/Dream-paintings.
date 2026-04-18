@@ -2,11 +2,13 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 
 // ── ICE / TURN servers ────────────────────────────────────────────────────────
+// Multiple STUN + reliable free TURN servers for NAT traversal
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    // Metered.ca free TURN (most reliable free option)
     {
       urls:       'turn:openrelay.metered.ca:80',
       username:   'openrelayproject',
@@ -18,7 +20,7 @@ const ICE_SERVERS = {
       credential: 'openrelayproject',
     },
     {
-      urls:       'turn:openrelay.metered.ca:443?transport=tcp',
+      urls:       'turns:openrelay.metered.ca:443',
       username:   'openrelayproject',
       credential: 'openrelayproject',
     },
@@ -43,7 +45,6 @@ export const NET_QUALITY = {
 };
 
 export function useCall({ socket, currentUser }) {
-  // ── React state (drives UI) ───────────────────────────────────────────────
   const [callState,    setCallState]    = useState(CALL_STATE.IDLE);
   const [callType,     setCallType]     = useState('voice');
   const [remoteUser,   setRemoteUser]   = useState(null);
@@ -52,69 +53,71 @@ export function useCall({ socket, currentUser }) {
   const [callDuration, setCallDuration] = useState(0);
   const [netQuality,   setNetQuality]   = useState(NET_QUALITY.UNKNOWN);
   const [permError,    setPermError]    = useState(null);
+  // Track socket ID so useEffect re-runs when socket reconnects
+  const [socketId,     setSocketId]     = useState(null);
 
-  // ── DOM refs ──────────────────────────────────────────────────────────────
+  // DOM refs
   const localVideoRef  = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
 
-  // ── Internal refs (never cause re-renders) ────────────────────────────────
-  const pcRef              = useRef(null);
-  const localStreamRef     = useRef(null);
-  const remoteStreamRef    = useRef(null);
-  const pendingOfferRef    = useRef(null);
-  const durationTimer      = useRef(null);
-  const qualityTimer       = useRef(null);
-  const callStateRef       = useRef(CALL_STATE.IDLE);
-  const callTypeRef        = useRef('voice');
-  const remoteUserRef      = useRef(null);
-  const facingMode         = useRef('user');
-  const iceBuf             = useRef([]);   // buffer candidates before remoteDesc
-  const isOfferer          = useRef(false);
-  const timerStarted       = useRef(false);
+  // Internal refs
+  const pcRef          = useRef(null);
+  const localStreamRef = useRef(null);
+  const remoteStreamRef= useRef(null);
+  const pendingOffer   = useRef(null);
+  const durationTimer  = useRef(null);
+  const qualityTimer   = useRef(null);
+  const callStateRef   = useRef(CALL_STATE.IDLE);
+  const callTypeRef    = useRef('voice');
+  const remoteUserRef  = useRef(null);
+  const facingMode     = useRef('user');
+  const iceBuf         = useRef([]);
+  const isOfferer      = useRef(false);
+  const timerStarted   = useRef(false);
+  // Store targetId so doIceRestart can access it without stale closure
+  const targetIdRef    = useRef(null);
 
-  // ── Sync state + ref together ─────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
   const setCS = useCallback((s) => {
     callStateRef.current = s;
     setCallState(s);
   }, []);
 
-  // ── Duration timer ────────────────────────────────────────────────────────
+  const fmt = useCallback((s) =>
+    `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`,
+  []);
+
   const startTimer = useCallback(() => {
     if (timerStarted.current) return;
     timerStarted.current = true;
     clearInterval(durationTimer.current);
     setCallDuration(0);
-    durationTimer.current = setInterval(
-      () => setCallDuration(s => s + 1), 1000
-    );
+    durationTimer.current = setInterval(() => setCallDuration(s => s + 1), 1000);
   }, []);
 
-  // ── Format seconds → MM:SS ────────────────────────────────────────────────
-  const fmt = useCallback((s) =>
-    `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`,
-  []);
-
-  // ── Attach remote stream to every output element ──────────────────────────
-  // Called both from ontrack AND from a render-time effect in CallUI
+  // ── Attach remote stream ──────────────────────────────────────────────────
   const attachRemote = useCallback((stream) => {
     if (!stream) return;
     remoteStreamRef.current = stream;
-    const tracks = stream.getTracks();
-    console.log('[RTC] remote stream tracks:',
-      tracks.map(t => `${t.kind} enabled=${t.enabled} muted=${t.muted}`));
 
-    // Attach to video element if available
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = stream;
-      remoteVideoRef.current.play().catch(() => {});
+    console.log('[RTC] attachRemote tracks:',
+      stream.getTracks().map(t => `${t.kind} enabled=${t.enabled} muted=${t.muted} readyState=${t.readyState}`));
+
+    // Attach audio — use ref to bypass React's muted prop bug
+    const audioEl = remoteAudioRef.current;
+    if (audioEl) {
+      audioEl.srcObject = stream;
+      audioEl.muted     = false;  // set via DOM ref, not JSX prop
+      audioEl.volume    = 1.0;
+      audioEl.play().catch(e => console.warn('[RTC] audio play:', e.message));
     }
-    // Attach to audio element if available
-    // NOTE: remoteAudioRef may be null here if overlay not yet rendered —
-    // CallUI's useEffect will re-attach on every render until it succeeds
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = stream;
-      remoteAudioRef.current.play().catch(() => {});
+
+    // Attach video
+    const videoEl = remoteVideoRef.current;
+    if (videoEl) {
+      videoEl.srcObject = stream;
+      videoEl.play().catch(() => {});
     }
   }, []);
 
@@ -125,15 +128,17 @@ export function useCall({ socket, currentUser }) {
     const buf = iceBuf.current.splice(0);
     for (const c of buf) {
       try { await pc.addIceCandidate(new RTCIceCandidate(c)); }
-      catch (e) { console.warn('[RTC] flush ICE err:', e.message); }
+      catch (e) { console.warn('[RTC] flush ICE:', e.message); }
     }
+    if (buf.length) console.log('[RTC] flushed', buf.length, 'buffered ICE candidates');
   }, []);
 
-  // ── Full cleanup ──────────────────────────────────────────────────────────
+  // ── Cleanup ───────────────────────────────────────────────────────────────
   const cleanup = useCallback(() => {
     clearInterval(durationTimer.current);
     clearInterval(qualityTimer.current);
-    timerStarted.current = false;
+    timerStarted.current  = false;
+    targetIdRef.current   = null;
 
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current  = null;
@@ -143,12 +148,13 @@ export function useCall({ socket, currentUser }) {
 
     if (pcRef.current) { pcRef.current.close(); pcRef.current = null; }
 
-    if (localVideoRef.current)  localVideoRef.current.srcObject  = null;
-    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+    // Clear media elements
+    [localVideoRef, remoteVideoRef, remoteAudioRef].forEach(ref => {
+      if (ref.current) ref.current.srcObject = null;
+    });
 
-    pendingOfferRef.current = null;
-    remoteUserRef.current   = null;
+    pendingOffer.current  = null;
+    remoteUserRef.current = null;
 
     setCS(CALL_STATE.IDLE);
     setRemoteUser(null);
@@ -159,7 +165,7 @@ export function useCall({ socket, currentUser }) {
     setPermError(null);
   }, [setCS]);
 
-  // ── Network quality polling ───────────────────────────────────────────────
+  // ── Network quality ───────────────────────────────────────────────────────
   const startQuality = useCallback(() => {
     clearInterval(qualityTimer.current);
     qualityTimer.current = setInterval(async () => {
@@ -180,53 +186,65 @@ export function useCall({ socket, currentUser }) {
         if      (rtt < 0.15 && loss < 0.02) setNetQuality(NET_QUALITY.GOOD);
         else if (rtt < 0.40 && loss < 0.08) setNetQuality(NET_QUALITY.FAIR);
         else                                 setNetQuality(NET_QUALITY.POOR);
-      } catch { /* not ready yet */ }
+      } catch { /* not ready */ }
     }, 3000);
   }, []);
+
+  // ── ICE restart — uses targetIdRef to avoid stale closure ────────────────
+  const doIceRestart = useCallback(async () => {
+    const pc  = pcRef.current;
+    const tid = targetIdRef.current;
+    if (!pc || !socket?.current || !tid) return;
+    console.log('[RTC] ICE restart for target:', tid);
+    try {
+      const offer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(offer);
+      socket.current.emit('call_user', {
+        targetUserId: tid,
+        offer,
+        callType:     callTypeRef.current,
+        callerName:   currentUser?.name,
+        callerAvatar: currentUser?.avatar_url,
+        isRestart:    true,
+      });
+    } catch (e) {
+      console.error('[RTC] ICE restart failed:', e);
+      cleanup();
+    }
+  }, [socket, currentUser, cleanup]);
 
   // ── Get user media ────────────────────────────────────────────────────────
   const getMedia = useCallback(async (type) => {
     setPermError(null);
-    const constraints = {
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl:  true,
-      },
-      video: type === 'video'
-        ? { facingMode: facingMode.current, width: { ideal: 1280 }, height: { ideal: 720 } }
-        : false,
-    };
-
     try {
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      const audio  = stream.getAudioTracks();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: type === 'video'
+          ? { facingMode: facingMode.current, width: { ideal: 1280 }, height: { ideal: 720 } }
+          : false,
+      });
+
+      const audio = stream.getAudioTracks();
       if (!audio.length) {
         toast.error('No microphone detected.');
         stream.getTracks().forEach(t => t.stop());
         return null;
       }
+      // Ensure all audio tracks are enabled
       audio.forEach(t => { t.enabled = true; });
       console.log('[RTC] local tracks:',
-        stream.getTracks().map(t => `${t.kind} enabled=${t.enabled}`));
+        stream.getTracks().map(t => `${t.kind} enabled=${t.enabled} label=${t.label}`));
       return stream;
     } catch (err) {
-      const denied   = ['NotAllowedError','PermissionDeniedError'].includes(err.name);
-      const noDevice = ['NotFoundError','DevicesNotFoundError'].includes(err.name);
-      const inUse    = ['NotReadableError','TrackStartError'].includes(err.name);
+      const denied   = ['NotAllowedError', 'PermissionDeniedError'].includes(err.name);
+      const noDevice = ['NotFoundError', 'DevicesNotFoundError'].includes(err.name);
+      const inUse    = ['NotReadableError', 'TrackStartError'].includes(err.name);
 
-      if (denied) {
-        setPermError(type === 'video' ? 'camera' : 'mic');
-        toast.error('Permission denied — allow mic/camera in browser settings.');
-      } else if (noDevice) {
-        toast.error('No microphone/camera found.');
-      } else if (inUse) {
-        toast.error('Mic/camera in use by another app.');
-      } else {
-        toast.error(`Media error: ${err.message}`);
-      }
+      if (denied)   { setPermError(type === 'video' ? 'camera' : 'mic'); toast.error('Permission denied — allow mic/camera in browser settings.'); }
+      else if (noDevice) toast.error('No microphone/camera found.');
+      else if (inUse)    toast.error('Mic/camera in use by another app.');
+      else               toast.error(`Media error: ${err.message}`);
 
-      // Fallback to audio-only for video calls
       if (type === 'video' && !denied && !noDevice) {
         try {
           toast('Falling back to voice-only.', { icon: '🎙️' });
@@ -240,7 +258,6 @@ export function useCall({ socket, currentUser }) {
     }
   }, []);
 
-  // ── Attach local stream to local video element ────────────────────────────
   const attachLocal = useCallback((stream) => {
     if (localVideoRef.current && stream) {
       localVideoRef.current.srcObject = stream;
@@ -250,6 +267,9 @@ export function useCall({ socket, currentUser }) {
 
   // ── Build RTCPeerConnection ───────────────────────────────────────────────
   const createPC = useCallback((targetId) => {
+    // Store targetId in ref so doIceRestart can access it without stale closure
+    targetIdRef.current = targetId;
+
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
     pc.onicecandidate = ({ candidate }) => {
@@ -259,15 +279,17 @@ export function useCall({ socket, currentUser }) {
     };
 
     pc.onicecandidateerror = (e) =>
-      console.warn('[RTC] ICE error:', e.errorCode, e.errorText);
+      console.warn('[RTC] ICE candidate error:', e.errorCode, e.errorText);
 
     pc.ontrack = (ev) => {
-      console.log('[RTC] ontrack:', ev.track.kind, 'streams:', ev.streams.length);
+      console.log('[RTC] ontrack:', ev.track.kind,
+        'enabled:', ev.track.enabled, 'muted:', ev.track.muted,
+        'streams:', ev.streams.length);
 
-      // Always ensure the track is enabled
+      // Force track enabled
       ev.track.enabled = true;
 
-      // Listen for unmute — some browsers deliver tracks muted initially
+      // Handle initially-muted tracks (Safari, Firefox)
       ev.track.onunmute = () => {
         console.log('[RTC] track unmuted:', ev.track.kind);
         if (remoteStreamRef.current) attachRemote(remoteStreamRef.current);
@@ -276,9 +298,11 @@ export function useCall({ socket, currentUser }) {
       if (ev.streams?.[0]) {
         attachRemote(ev.streams[0]);
       } else {
-        // Build stream manually when streams[] is empty (some browsers)
+        // Build stream manually (some browsers don't provide streams[])
         const s = remoteStreamRef.current ?? new MediaStream();
-        s.addTrack(ev.track);
+        if (!s.getTracks().find(t => t.id === ev.track.id)) {
+          s.addTrack(ev.track);
+        }
         attachRemote(s);
       }
     };
@@ -286,22 +310,23 @@ export function useCall({ socket, currentUser }) {
     pc.onconnectionstatechange = () => {
       const s = pc.connectionState;
       console.log('[RTC] connectionState:', s);
+
       if (s === 'connected') {
         setCS(CALL_STATE.CONNECTED);
         startTimer();
         startQuality();
-        // Re-attach remote stream now that UI is fully rendered
-        if (remoteStreamRef.current) attachRemote(remoteStreamRef.current);
+        // Re-attach stream now that UI overlays are rendered
+        if (remoteStreamRef.current) {
+          setTimeout(() => attachRemote(remoteStreamRef.current), 100);
+        }
       } else if (s === 'connecting') {
         setCS(CALL_STATE.CONNECTING);
       } else if (s === 'disconnected') {
         setCS(CALL_STATE.RECONNECTING);
-        toast('Reconnecting…', { icon: '🔄', id: 'rtc-reconnect' });
-        if (isOfferer.current) {
-          setTimeout(() => doIceRestart(targetId), 2000);
-        }
+        toast('Connection lost. Reconnecting…', { icon: '🔄', id: 'rtc-reconnect' });
+        if (isOfferer.current) setTimeout(() => doIceRestart(), 2000);
       } else if (s === 'failed') {
-        toast.error('Call failed. Please try again.');
+        toast.error('Call connection failed.');
         cleanup();
       } else if (s === 'closed') {
         cleanup();
@@ -309,42 +334,20 @@ export function useCall({ socket, currentUser }) {
     };
 
     pc.oniceconnectionstatechange = () => {
-      console.log('[RTC] iceState:', pc.iceConnectionState);
+      console.log('[RTC] iceConnectionState:', pc.iceConnectionState);
       if (pc.iceConnectionState === 'failed' && isOfferer.current) {
-        doIceRestart(targetId);
+        doIceRestart();
       }
     };
 
     return pc;
-  }, [socket, setCS, startTimer, startQuality, attachRemote, cleanup]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── ICE restart ───────────────────────────────────────────────────────────
-  const doIceRestart = useCallback(async (targetId) => {
-    const pc = pcRef.current;
-    if (!pc || !socket?.current) return;
-    console.log('[RTC] ICE restart…');
-    try {
-      const offer = await pc.createOffer({ iceRestart: true });
-      await pc.setLocalDescription(offer);
-      socket.current.emit('call_user', {
-        targetUserId: targetId ?? remoteUserRef.current?.id,
-        offer,
-        callType:     callTypeRef.current,
-        callerName:   currentUser?.name,
-        callerAvatar: currentUser?.avatar_url,
-        isRestart:    true,
-      });
-    } catch (e) {
-      console.error('[RTC] ICE restart failed:', e);
-      cleanup();
-    }
-  }, [socket, currentUser, cleanup]);
+  }, [socket, setCS, startTimer, startQuality, attachRemote, doIceRestart, cleanup]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Start outgoing call ───────────────────────────────────────────────────
   const startCall = useCallback(async (targetUser, type = 'voice') => {
     if (callStateRef.current !== CALL_STATE.IDLE) return;
     if (!socket?.current?.connected) {
-      toast.error('Not connected to server. Please refresh.');
+      toast.error('Not connected. Please refresh the page.');
       return;
     }
 
@@ -360,7 +363,7 @@ export function useCall({ socket, currentUser }) {
 
     stream.getTracks().forEach(t => {
       pc.addTrack(t, stream);
-      console.log('[RTC] added local track:', t.kind);
+      console.log('[RTC] caller added track:', t.kind, 'enabled:', t.enabled);
     });
 
     const offer = await pc.createOffer({
@@ -387,7 +390,7 @@ export function useCall({ socket, currentUser }) {
   // ── Accept incoming call ──────────────────────────────────────────────────
   const acceptCall = useCallback(async () => {
     const { callerId, callerName, callerAvatar, offer, callType: inType } =
-      pendingOfferRef.current || {};
+      pendingOffer.current || {};
     if (!offer) return;
 
     const stream = await getMedia(inType);
@@ -400,16 +403,15 @@ export function useCall({ socket, currentUser }) {
     const pc = createPC(callerId);
     pcRef.current = pc;
 
-    // CRITICAL: add tracks BEFORE setRemoteDescription
+    // Add tracks BEFORE setRemoteDescription — critical for bi-directional audio
     stream.getTracks().forEach(t => {
       pc.addTrack(t, stream);
-      console.log('[RTC] added local track (callee):', t.kind, 'enabled:', t.enabled);
+      console.log('[RTC] callee added track:', t.kind, 'enabled:', t.enabled);
     });
 
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
     await flushIce();
 
-    // createAnswer with explicit sendrecv direction — ensures callee audio goes to caller
     const answer = await pc.createAnswer({
       offerToReceiveAudio: true,
       offerToReceiveVideo: inType === 'video',
@@ -425,30 +427,29 @@ export function useCall({ socket, currentUser }) {
     socket.current?.emit('call_answer', { targetUserId: callerId, answer });
   }, [getMedia, attachLocal, createPC, flushIce, socket, setCS]);
 
-  // ── Reject call ───────────────────────────────────────────────────────────
+  // ── Reject / End ──────────────────────────────────────────────────────────
   const rejectCall = useCallback(() => {
-    const id = pendingOfferRef.current?.callerId;
+    const id = pendingOffer.current?.callerId;
     if (id) socket.current?.emit('call_reject', { targetUserId: id });
     cleanup();
   }, [socket, cleanup]);
 
-  // ── End call ──────────────────────────────────────────────────────────────
   const endCall = useCallback((targetId, emit = true) => {
     const tid = targetId ?? remoteUserRef.current?.id;
     if (emit && tid) socket.current?.emit('call_end', { targetUserId: tid });
     cleanup();
   }, [socket, cleanup]);
 
-  // ── Mute toggle ───────────────────────────────────────────────────────────
+  // ── Mute / Camera / Switch ────────────────────────────────────────────────
   const toggleMute = useCallback(() => {
     const tracks = localStreamRef.current?.getAudioTracks() ?? [];
-    if (!tracks.length) { toast.error('No audio track'); return; }
+    if (!tracks.length) { toast.error('No audio track found'); return; }
     const next = !tracks[0].enabled;
     tracks.forEach(t => { t.enabled = next; });
     setIsMuted(!next);
+    console.log('[RTC] mic', next ? 'unmuted' : 'muted');
   }, []);
 
-  // ── Camera toggle ─────────────────────────────────────────────────────────
   const toggleCamera = useCallback(() => {
     const tracks = localStreamRef.current?.getVideoTracks() ?? [];
     if (!tracks.length) return;
@@ -457,7 +458,6 @@ export function useCall({ socket, currentUser }) {
     setIsCamOff(!next);
   }, []);
 
-  // ── Switch camera ─────────────────────────────────────────────────────────
   const switchCamera = useCallback(async () => {
     if (!pcRef.current || !localStreamRef.current) return;
     facingMode.current = facingMode.current === 'user' ? 'environment' : 'user';
@@ -476,16 +476,20 @@ export function useCall({ socket, currentUser }) {
   }, [attachLocal]);
 
   // ── Socket signaling listeners ────────────────────────────────────────────
-  // Re-attach whenever the socket instance changes (reconnect, login, etc.)
+  // socketId state ensures this re-runs when socket reconnects
   useEffect(() => {
     const sock = socket?.current;
     if (!sock) return;
 
+    // Track socket ID for reconnect detection
+    const handleConnect = () => setSocketId(sock.id);
+    sock.on('connect', handleConnect);
+    if (sock.connected) setSocketId(sock.id);
+
     const onIncoming = ({ callerId, callerName, callerAvatar, callType: inType, offer, isRestart }) => {
-      // ICE restart renegotiation — don't show incoming UI
+      // ICE restart — renegotiate without showing incoming UI
       if (isRestart && pcRef.current &&
-          (callStateRef.current === CALL_STATE.CONNECTED ||
-           callStateRef.current === CALL_STATE.RECONNECTING)) {
+          [CALL_STATE.CONNECTED, CALL_STATE.RECONNECTING].includes(callStateRef.current)) {
         pcRef.current
           .setRemoteDescription(new RTCSessionDescription(offer))
           .then(() => pcRef.current.createAnswer())
@@ -502,9 +506,9 @@ export function useCall({ socket, currentUser }) {
         return;
       }
 
-      pendingOfferRef.current = { callerId, callerName, callerAvatar, callType: inType, offer };
-      callTypeRef.current     = inType || 'voice';
-      remoteUserRef.current   = { id: callerId, name: callerName, avatar: callerAvatar };
+      pendingOffer.current  = { callerId, callerName, callerAvatar, callType: inType, offer };
+      callTypeRef.current   = inType || 'voice';
+      remoteUserRef.current = { id: callerId, name: callerName, avatar: callerAvatar };
       setCallType(inType || 'voice');
       setRemoteUser({ id: callerId, name: callerName, avatar: callerAvatar });
       setCS(CALL_STATE.RINGING);
@@ -518,18 +522,15 @@ export function useCall({ socket, currentUser }) {
         await flushIce();
         setCS(CALL_STATE.CONNECTING);
         console.log('[RTC] answer set. senders:',
-          pc.getSenders().map(s => s.track?.kind));
+          pc.getSenders().map(s => `${s.track?.kind} enabled=${s.track?.enabled}`));
       } catch (e) {
         console.error('[RTC] setRemoteDesc(answer) failed:', e);
-        toast.error('Call setup failed.');
+        toast.error('Call setup failed. Please try again.');
         cleanup();
       }
     };
 
-    const onRejected = () => {
-      toast('Call declined.', { icon: '📵' });
-      cleanup();
-    };
+    const onRejected = () => { toast('Call declined.', { icon: '📵' }); cleanup(); };
 
     const onIce = async ({ candidate }) => {
       if (!candidate) return;
@@ -543,10 +544,7 @@ export function useCall({ socket, currentUser }) {
       catch (e) { console.warn('[RTC] addIceCandidate:', e.message); }
     };
 
-    const onEnded = () => {
-      toast('Call ended.', { icon: '📞' });
-      cleanup();
-    };
+    const onEnded = () => { toast('Call ended.', { icon: '📞' }); cleanup(); };
 
     sock.on('incoming_call', onIncoming);
     sock.on('call_answered', onAnswered);
@@ -555,19 +553,17 @@ export function useCall({ socket, currentUser }) {
     sock.on('call_ended',    onEnded);
 
     return () => {
+      sock.off('connect',      handleConnect);
       sock.off('incoming_call', onIncoming);
       sock.off('call_answered', onAnswered);
       sock.off('call_rejected', onRejected);
       sock.off('ice_candidate', onIce);
       sock.off('call_ended',    onEnded);
     };
-  // Re-run when socket.current changes (new socket instance after reconnect)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket?.current]);
+  }, [socket?.current, socketId]);
 
-  // Cleanup on unmount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => () => cleanup(), []);
+  useEffect(() => () => cleanup(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     callState, callType, remoteUser,
