@@ -1,163 +1,134 @@
-# 🚀 Production Deployment Configuration Guide
+# Dream Paintings — Production Deployment Guide
 
-## 📋 Overview
-This guide ensures your Dream Paintings website works perfectly online across all devices (mobile, tablet, desktop).
-
----
-
-## ✅ CHECKLIST BEFORE DEPLOYMENT
-
-### Backend (Render)
-- [ ] Create PostgreSQL database on Render
-- [ ] Copy DATABASE_URL to Render environment
-- [ ] Set JWT_SECRET (use a strong random string)
-- [ ] Configure Cloudinary credentials
-- [ ] Set FRONTEND_URL to your Vercel domain
-- [ ] Enable SSL for database connections
-- [ ] Test health endpoint: `/api/health`
-
-### Frontend (Vercel)
-- [ ] Update VITE_API_URL to your Render backend
-- [ ] Build locally: `npm run build`
-- [ ] Test build output: `npm run preview`
-- [ ] Verify responsive design on mobile
-- [ ] Check Lighthouse scores
+## Architecture
+- **Backend** → Render (Node.js + Express)
+- **Frontend** → Vercel (React + Vite)
+- **Database** → Neon (PostgreSQL)
+- **Images** → Cloudinary
 
 ---
 
-## 🔒 Environment Variables
+## Step 1 — Push to GitHub
 
-### Backend (.env on Render)
+Make sure your repo is on GitHub. The `.gitignore` protects:
+- `backend/.env` (your real secrets)
+- `frontend/.env` and `frontend/.env.local`
+- `node_modules/`, `dist/`
+
+**Do NOT commit real secrets. Use environment variables on each platform.**
+
+---
+
+## Step 2 — Deploy Backend on Render
+
+1. Go to [render.com](https://render.com) → New → Web Service
+2. Connect your GitHub repo
+3. Settings:
+   - **Root Directory:** `backend`
+   - **Build Command:** `npm install`
+   - **Start Command:** `node server.js`
+   - **Environment:** Node
+
+4. Add these Environment Variables in Render dashboard:
+
+| Key | Value |
+|-----|-------|
+| `NODE_ENV` | `production` |
+| `DATABASE_URL` | your Neon connection string |
+| `JWT_SECRET` | a strong random string (min 32 chars) |
+| `FRONTEND_URL` | your Vercel URL (e.g. `https://dream-paintings.vercel.app`) |
+| `CLOUDINARY_CLOUD_NAME` | from Cloudinary dashboard |
+| `CLOUDINARY_API_KEY` | from Cloudinary dashboard |
+| `CLOUDINARY_API_SECRET` | from Cloudinary dashboard |
+| `RAZORPAY_KEY_ID` | from Razorpay dashboard |
+| `RAZORPAY_KEY_SECRET` | from Razorpay dashboard |
+| `ENCRYPTION_KEY` | a 32-character random string |
+| `DATABASE_SSL` | `true` |
+
+5. Deploy. Note your backend URL: `https://dream-paintings-backend.onrender.com`
+
+---
+
+## Step 3 — Deploy Frontend on Vercel
+
+1. Go to [vercel.com](https://vercel.com) → New Project
+2. Import your GitHub repo
+3. Settings:
+   - **Root Directory:** `frontend`
+   - **Framework Preset:** Vite
+   - **Build Command:** `npm run build`
+   - **Output Directory:** `dist`
+
+4. Add these Environment Variables in Vercel dashboard:
+
+| Key | Value |
+|-----|-------|
+| `VITE_API_URL` | `https://dream-paintings-backend.onrender.com/api` |
+
+> The `frontend/.env.production` file already sets this, but setting it in Vercel dashboard overrides it and is more secure.
+
+5. Deploy. Your site will be live at `https://dream-paintings.vercel.app`
+
+---
+
+## Step 4 — Update FRONTEND_URL on Render
+
+After Vercel gives you your domain:
+1. Go to Render → your backend service → Environment
+2. Update `FRONTEND_URL` to your exact Vercel URL
+3. Redeploy the backend (or it auto-redeploys)
+
+---
+
+## Step 5 — Verify Everything Works
+
+- [ ] Visit your Vercel URL — homepage loads
+- [ ] Register a new account
+- [ ] Login works
+- [ ] Gallery loads paintings
+- [ ] Image uploads work (Cloudinary)
+- [ ] Place a test order
+- [ ] Admin panel accessible at `/super-admin-portal-xyz`
+- [ ] Chat / Socket.IO connects (check browser console for errors)
+
+---
+
+## Common Issues
+
+### "Network Error" on frontend
+- Check `VITE_API_URL` is set correctly in Vercel
+- Make sure backend is running on Render (free tier sleeps after inactivity)
+
+### CORS errors
+- Make sure `FRONTEND_URL` on Render matches your exact Vercel domain (no trailing slash)
+
+### Socket.IO not connecting
+- Render free tier supports WebSockets — no extra config needed
+- Check browser console: the socket URL should point to your Render backend
+
+### Database errors on first boot
+- The app auto-creates all tables on startup via `initDB()`
+- Check Render logs for `✅ Database initialized`
+
+### Render free tier cold starts
+- Free Render services sleep after 15 min of inactivity
+- First request after sleep takes ~30 seconds
+- Upgrade to paid tier or use a cron job to ping `/api/health` every 10 min
+
+---
+
+## Admin Account Setup
+
+After deployment, run this once to create your admin account:
+
+```bash
+# On Render: go to your service → Shell tab
+node createAdmin.js
 ```
-PORT=5000
-NODE_ENV=production
-DATABASE_URL=postgresql://user:pass@host:port/db
-JWT_SECRET=generate_a_random_string_here
-FRONTEND_URL=https://your-vercel-app.vercel.app
-CLOUDINARY_CLOUD_NAME=your_value
-CLOUDINARY_API_KEY=your_value
-CLOUDINARY_API_SECRET=your_value
-RAZORPAY_KEY_ID=your_value
-RAZORPAY_KEY_SECRET=your_value
+
+Or set these env vars before running:
 ```
-
-### Frontend (.env.local in Vercel)
+ADMIN_EMAIL=your@email.com
+ADMIN_PASSWORD=yourpassword
+ADMIN_NAME=Admin
 ```
-VITE_API_URL=https://your-render-backend.onrender.com/api
-VITE_APP_URL=https://your-vercel-app.vercel.app
-```
-
----
-
-## 📱 Mobile & Responsive Testing
-
-### Desktop Testing
-- [ ] Chrome (Latest)
-- [ ] Firefox (Latest)
-- [ ] Safari (Latest)
-
-### Mobile Testing
-- [ ] iPhone 12/13/14 (Safari)
-- [ ] Android 12/13/14 (Chrome)
-- [ ] Tablet (iPad/Android Tablet)
-
-### Key Pages to Test
-- [ ] Home page
-- [ ] Gallery/Browse
-- [ ] Painting details
-- [ ] User profile
-- [ ] Chat interface
-- [ ] Admin dashboard
-- [ ] Payment page
-- [ ] Mobile navigation
-
----
-
-## 🔌 CORS Configuration
-Your backend CORS now supports:
-- ✅ Vercel production domains
-- ✅ Render production domains
-- ✅ Localhost for development
-- ✅ Mobile app origins
-
----
-
-## 📊 Performance Optimization
-
-### Frontend Optimizations
-1. **Code Splitting**: React lazy loading active
-2. **Bundle Size**: Vendor chunks separated (React, Three.js, Framer Motion)
-3. **Images**: Cloudinary integration for optimization
-4. **Fonts**: Google Fonts with preload/preconnect
-
-### Backend Optimizations
-1. **Database**: Connection pooling configured
-2. **CORS Caching**: 24-hour max age
-3. **Socket.IO**: Configured for production
-
----
-
-## 🧪 Testing Checklist
-
-### Functionality
-- [ ] User registration & login works
-- [ ] Painting upload works
-- [ ] Chat functionality works
-- [ ] Payments process correctly
-- [ ] Admin dashboard accessible
-- [ ] File uploads to Cloudinary
-
-### Performance
-- [ ] Page load time < 3 seconds
-- [ ] Lighthouse score > 80
-- [ ] No console errors
-- [ ] Network requests complete
-
-### Mobile
-- [ ] Touch interactions work
-- [ ] Forms are usable on mobile
-- [ ] Images load correctly
-- [ ] Navigation is intuitive
-
----
-
-## 🔧 Troubleshooting
-
-### Common Issues
-
-**CORS Error**
-- Update FRONTEND_URL in Render
-- Ensure Vercel domain is in allowedOrigins
-
-**Database Connection Error**
-- Verify DATABASE_URL format
-- Check SSL: true for Render PostgreSQL
-- Ensure IP whitelist is open
-
-**API Timeout**
-- Increase timeout in frontend/src/utils/api.js
-- Check Render backend logs
-
-**Images Not Loading**
-- Verify Cloudinary credentials
-- Check image permissions
-
----
-
-## 📞 Deployment Links
-
-After deployment, you'll have:
-- **Backend**: https://dream-paintings-backend.onrender.com
-- **Frontend**: https://dream-paintings.vercel.app
-
----
-
-## 🎯 Next Steps
-
-1. Deploy backend to Render
-2. Deploy frontend to Vercel
-3. Update environment variables
-4. Run full testing suite
-5. Monitor logs for issues
-
-For issues: Check Render & Vercel logs in their dashboards.

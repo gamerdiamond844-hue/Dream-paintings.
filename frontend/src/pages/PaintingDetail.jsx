@@ -139,9 +139,23 @@ export default function PaintingDetail() {
 
             {/* Price */}
             <div className="mb-8">
-              <span className="font-display text-4xl font-bold gradient-text">
-                ₹{parseFloat(painting.price).toLocaleString()}
-              </span>
+              {painting.discount_percent > 0 ? (
+                <div className="flex items-baseline gap-3">
+                  <span className="font-display text-4xl font-bold gradient-text">
+                    ₹{(parseFloat(painting.price) * (1 - painting.discount_percent / 100)).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                  </span>
+                  <span className="text-xl text-gray-400 line-through">
+                    ₹{parseFloat(painting.price).toLocaleString('en-IN')}
+                  </span>
+                  <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
+                    {painting.discount_percent}% off
+                  </span>
+                </div>
+              ) : (
+                <span className="font-display text-4xl font-bold gradient-text">
+                  ₹{parseFloat(painting.price).toLocaleString('en-IN')}
+                </span>
+              )}
             </div>
 
             {/* Actions */}

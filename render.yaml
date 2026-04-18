@@ -6,42 +6,23 @@ services:
     buildCommand: npm install
     startCommand: node server.js
     envVars:
-      # Server Configuration
-      - key: PORT
-        value: 5000
       - key: NODE_ENV
         value: production
-
-      # Database Configuration
       - key: DATABASE_URL
         sync: false
-
-      # Authentication
       - key: JWT_SECRET
         sync: false
-
-      # CORS Configuration
       - key: FRONTEND_URL
         sync: false
-
-      # Cloudinary (Image Upload)
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
-
-      # Razorpay (Payments)
       - key: RAZORPAY_KEY_ID
         sync: false
       - key: RAZORPAY_KEY_SECRET
         sync: false
-
-      # Optional: Email Configuration
-      - key: EMAIL_SERVICE
-        sync: false
-      - key: EMAIL_USER
-        sync: false
-      - key: EMAIL_PASSWORD
+      - key: ENCRYPTION_KEY
         sync: false

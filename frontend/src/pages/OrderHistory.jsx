@@ -63,6 +63,7 @@ const downloadInvoice = (order) => {
   </body></html>`;
 
   const win = window.open('', '_blank');
+  if (!win) { toast.error('Please allow popups to download the invoice'); return; }
   win.document.write(html);
   win.document.close();
   win.print();

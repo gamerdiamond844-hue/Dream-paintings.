@@ -43,7 +43,7 @@ export default function Chat() {
   const {
     callState, callType, remoteUser: callRemoteUser,
     isMuted, isCamOff, callDuration, fmt,
-    localVideoRef, remoteVideoRef, remoteAudioRef,
+    localVideoRef, remoteVideoRef, remoteAudioRef, remoteStreamRef,
     startCall, acceptCall, rejectCall, endCall,
     toggleMute, toggleCamera, switchCamera,
   } = useCall({ socket, currentUser: user });
@@ -525,6 +525,7 @@ export default function Chat() {
         localVideoRef={localVideoRef}
         remoteVideoRef={remoteVideoRef}
         remoteAudioRef={remoteAudioRef}
+        remoteStreamRef={remoteStreamRef}
         onAccept={acceptCall}
         onReject={rejectCall}
         onEnd={() => endCall()}

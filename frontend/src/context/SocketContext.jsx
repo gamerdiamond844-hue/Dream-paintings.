@@ -25,8 +25,18 @@ export const SocketProvider = ({ children }) => {
     if (!token) return;
 
     const socket = io(
-      import.meta.env.VITE_SOCKET_URL || window.location.origin,
-      { auth: { token }, transports: ['websocket'], reconnectionAttempts: 5 }
+      import.meta.env.VITE_API_URL
+        ? import.meta.env.VITE_API_URL.replace('/api', '')
+        : window.location.origin,
+      {
+        auth: { token },
+        transports: ['websocket', 'polling'], // fallback to polling
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        timeout: 20000,
+        forceNew: false,
+        upgrade: true,
+      }
     );
     socketRef.current = socket;
 

@@ -19,6 +19,7 @@ export const CALL_STATE = {
 
 export function useCall({ socket, currentUser }) {
   const [callState,    setCallState]    = useState(CALL_STATE.IDLE);
+
   const [callType,     setCallType]     = useState('voice');   // 'voice' | 'video'
   const [remoteUser,   setRemoteUser]   = useState(null);
   const [isMuted,      setIsMuted]      = useState(false);
@@ -37,6 +38,7 @@ export function useCall({ socket, currentUser }) {
   const pendingOfferRef  = useRef(null);
   const durationTimer    = useRef(null);
   const listenersAdded   = useRef(false);
+  const callStateRef      = useRef(CALL_STATE.IDLE);
   const facingMode       = useRef('user'); // 'user' | 'environment'
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -64,6 +66,7 @@ export function useCall({ socket, currentUser }) {
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
 
     pendingOfferRef.current = null;
+    callStateRef.current = CALL_STATE.IDLE;
     setCallState(CALL_STATE.IDLE);
     setRemoteUser(null);
     setIsMuted(false);
@@ -161,6 +164,7 @@ export function useCall({ socket, currentUser }) {
 
     setCallType(type);
     setRemoteUser(targetUser);
+    callStateRef.current = CALL_STATE.CALLING;
     setCallState(CALL_STATE.CALLING);
 
     socket.current.emit('call_user', {
@@ -193,6 +197,7 @@ export function useCall({ socket, currentUser }) {
 
     setCallType(inType);
     setRemoteUser({ id: callerId, name: callerName, avatar: callerAvatar });
+    callStateRef.current = CALL_STATE.CONNECTED;
     setCallState(CALL_STATE.CONNECTED);
     startTimer();
 
@@ -261,20 +266,22 @@ export function useCall({ socket, currentUser }) {
     listenersAdded.current = true;
 
     const onIncomingCall = ({ callerId, callerName, callerAvatar, callType: inType, offer }) => {
-      // Already busy — auto-reject
-      if (callState !== CALL_STATE.IDLE) {
+      // Already busy — auto-reject (use ref to avoid stale closure)
+      if (callStateRef.current !== CALL_STATE.IDLE) {
         sock.emit('call_reject', { targetUserId: callerId });
         return;
       }
       pendingOfferRef.current = { callerId, callerName, callerAvatar, callType: inType, offer };
       setCallType(inType || 'voice');
       setRemoteUser({ id: callerId, name: callerName, avatar: callerAvatar });
+      callStateRef.current = CALL_STATE.RINGING;
       setCallState(CALL_STATE.RINGING);
     };
 
     const onCallAnswered = async ({ answer }) => {
       if (!pcRef.current) return;
       await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+      callStateRef.current = CALL_STATE.CONNECTED;
       setCallState(CALL_STATE.CONNECTED);
       startTimer();
     };
@@ -310,7 +317,7 @@ export function useCall({ socket, currentUser }) {
       sock.off('call_ended',     onCallEnded);
       listenersAdded.current = false;
     };
-  }, [socket?.current]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [socket?.current, cleanup]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cleanup on unmount
   useEffect(() => () => cleanup(), []); // eslint-disable-line react-hooks/exhaustive-deps

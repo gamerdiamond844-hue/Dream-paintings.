@@ -254,11 +254,11 @@ export default function CallUI({
 
   // Ensure remote audio stream is attached to the audio element
   useEffect(() => {
-    if (remoteAudioRef.current && remoteStreamRef?.current) {
+    if (remoteAudioRef?.current && remoteStreamRef?.current) {
       remoteAudioRef.current.srcObject = remoteStreamRef.current;
       remoteAudioRef.current.play().catch(() => {});
     }
-  }, [remoteStreamRef?.current]);
+  }); // run every render — refs are not reactive
 
   return (
     <>

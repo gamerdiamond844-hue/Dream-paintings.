@@ -15,16 +15,9 @@ const allowedOrigins = [
   'http://localhost:3000',
 ];
 
-// Add production domains
-if (process.env.NODE_ENV === 'production' && process.env.FRONTEND_URL) {
-  allowedOrigins.push(process.env.FRONTEND_URL);
-}
-
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests without origin (mobile apps, server-to-server)
     if (!origin) return callback(null, true);
-    
     if (
       allowedOrigins.includes(origin) ||
       /\.ngrok-free\.app$/.test(origin) ||
@@ -34,18 +27,16 @@ const corsOptions = {
     ) {
       callback(null, true);
     } else if (process.env.NODE_ENV === 'production') {
-      // Strict in production
       console.warn(`CORS blocked origin: ${origin}`);
       callback(new Error('Not allowed by CORS'));
     } else {
-      // Permissive in development
       callback(null, true);
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  maxAge: 86400, // 24 hours
+  maxAge: 86400,
 };
 
 const io = new Server(server, {

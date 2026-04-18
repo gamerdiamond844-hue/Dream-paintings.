@@ -2,40 +2,31 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss()],
   build: {
-    // Optimize for production
     minify: 'terser',
-    sourcemap: false, // Disable in production for security
+    sourcemap: false,
     reportCompressedSize: true,
-    
-    // Split large vendor libs into separate cached chunks
     rollupOptions: {
       output: {
-        manualChunks: {
-          'react-vendor':  ['react', 'react-dom', 'react-router-dom'],
-          'three-vendor':  ['three', '@react-three/fiber', '@react-three/drei'],
-          'motion-vendor': ['framer-motion'],
-          'socket-vendor': ['socket.io-client'],
+        manualChunks: (id) => {
+          if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) return 'react-vendor';
+          if (id.includes('three') || id.includes('@react-three')) return 'three-vendor';
+          if (id.includes('framer-motion')) return 'motion-vendor';
+          if (id.includes('socket.io')) return 'socket-vendor';
+          if (id.includes('node_modules')) return 'vendor';
         },
       },
     },
-    
-    // Raise warning limit — three.js is large by nature
     chunkSizeWarningLimit: 1000,
-    
-    // CSS code splitting
     cssCodeSplit: true,
-    
-    // Enable gzip compression reporting
     terserOptions: {
       compress: {
-        drop_console: process.env.NODE_ENV === 'production',
+        drop_console: mode === 'production',
       },
     },
   },
-  
   server: {
     proxy: {
       '/api': 'http://localhost:5000',
@@ -45,5 +36,4 @@ export default defineConfig({
       },
     },
   },
-})
-
+}))

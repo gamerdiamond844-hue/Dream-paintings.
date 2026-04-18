@@ -21,7 +21,7 @@ export default function PaymentPage() {
   useEffect(() => {
     if (!painting || !customerDetails) { navigate('/gallery'); return; }
     api.get('/orders/qr').then(r => setQrUrl(r.data.qr_url)).catch(() => {});
-  }, []);
+  }, [painting, customerDetails, navigate]);
 
   if (!painting || !customerDetails) return null;
 
@@ -101,9 +101,11 @@ export default function PaymentPage() {
             };
             const res = await api.post('/orders/razorpay/verify', payload);
             toast.success('Payment successful! Order placed. 🎉');
+            setRazorpayLoading(false);
             navigate('/order-success', { state: { order: res.data, painting } });
           } catch (err) {
             toast.error(err.response?.data?.message || 'Payment verification failed');
+            setRazorpayLoading(false);
           }
         },
         modal: {
