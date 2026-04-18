@@ -30,16 +30,19 @@ export const SocketProvider = ({ children }) => {
         : window.location.origin,
       {
         auth: { token },
-        transports: ['websocket', 'polling'], // fallback to polling
-        reconnectionAttempts: 5,
+        transports: ['websocket', 'polling'],
+        reconnectionAttempts: 10,
         reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
         timeout: 20000,
-        forceNew: false,
-        upgrade: true,
+        forceNew: true,
       }
     );
     socketRef.current = socket;
 
+    socket.on('connect', () => console.log('[Socket] connected:', socket.id));
+    socket.on('disconnect', (reason) => console.log('[Socket] disconnected:', reason));
+    socket.on('connect_error', (err) => console.warn('[Socket] connect error:', err.message));
     socket.on('online_users', (ids) => setOnlineUsers(new Set(ids.map(Number))));
 
     socket.on('user_online', ({ userId, online }) => {

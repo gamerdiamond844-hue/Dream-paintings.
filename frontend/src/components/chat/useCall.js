@@ -1,28 +1,25 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 
-// ── ICE servers ───────────────────────────────────────────────────────────────
-// Free STUN + public TURN via Open Relay (metered.ca free tier)
-// For production replace with your own TURN credentials
+// ── ICE / TURN servers ────────────────────────────────────────────────────────
 const ICE_SERVERS = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    // Public TURN — works for most NAT/firewall scenarios
     {
-      urls: 'turn:openrelay.metered.ca:80',
-      username: 'openrelayproject',
+      urls:       'turn:openrelay.metered.ca:80',
+      username:   'openrelayproject',
       credential: 'openrelayproject',
     },
     {
-      urls: 'turn:openrelay.metered.ca:443',
-      username: 'openrelayproject',
+      urls:       'turn:openrelay.metered.ca:443',
+      username:   'openrelayproject',
       credential: 'openrelayproject',
     },
     {
-      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-      username: 'openrelayproject',
+      urls:       'turn:openrelay.metered.ca:443?transport=tcp',
+      username:   'openrelayproject',
       credential: 'openrelayproject',
     },
   ],
@@ -31,11 +28,11 @@ const ICE_SERVERS = {
 
 export const CALL_STATE = {
   IDLE:         'idle',
-  CALLING:      'calling',       // outgoing — waiting for answer
-  RINGING:      'ringing',       // incoming — waiting for accept/reject
-  CONNECTING:   'connecting',    // WebRTC handshake in progress
-  CONNECTED:    'connected',     // media flowing
-  RECONNECTING: 'reconnecting',  // ICE restart in progress
+  CALLING:      'calling',
+  RINGING:      'ringing',
+  CONNECTING:   'connecting',
+  CONNECTED:    'connected',
+  RECONNECTING: 'reconnecting',
 };
 
 export const NET_QUALITY = {
@@ -46,6 +43,7 @@ export const NET_QUALITY = {
 };
 
 export function useCall({ socket, currentUser }) {
+  // ── React state (drives UI) ───────────────────────────────────────────────
   const [callState,    setCallState]    = useState(CALL_STATE.IDLE);
   const [callType,     setCallType]     = useState('voice');
   const [remoteUser,   setRemoteUser]   = useState(null);
@@ -53,84 +51,90 @@ export function useCall({ socket, currentUser }) {
   const [isCamOff,     setIsCamOff]     = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [netQuality,   setNetQuality]   = useState(NET_QUALITY.UNKNOWN);
-  const [permError,    setPermError]    = useState(null); // 'mic' | 'camera' | null
+  const [permError,    setPermError]    = useState(null);
 
-  // DOM refs
+  // ── DOM refs ──────────────────────────────────────────────────────────────
   const localVideoRef  = useRef(null);
   const remoteVideoRef = useRef(null);
   const remoteAudioRef = useRef(null);
 
-  // Internal refs
-  const pcRef           = useRef(null);
-  const localStreamRef  = useRef(null);
-  const remoteStreamRef = useRef(null);
-  const pendingOfferRef = useRef(null);
-  const durationTimer   = useRef(null);
-  const qualityTimer    = useRef(null);
-  const listenersAdded  = useRef(false);
-  const callStateRef    = useRef(CALL_STATE.IDLE);
-  const callTypeRef     = useRef('voice');
-  const remoteUserRef   = useRef(null);
-  const facingMode      = useRef('user');
-  // Buffer ICE candidates that arrive before remoteDescription is set
-  const iceCandidateBuffer = useRef([]);
-  // Track whether we are the offerer (caller) for ICE restart
-  const isOffererRef    = useRef(false);
+  // ── Internal refs (never cause re-renders) ────────────────────────────────
+  const pcRef              = useRef(null);
+  const localStreamRef     = useRef(null);
+  const remoteStreamRef    = useRef(null);
+  const pendingOfferRef    = useRef(null);
+  const durationTimer      = useRef(null);
+  const qualityTimer       = useRef(null);
+  const callStateRef       = useRef(CALL_STATE.IDLE);
+  const callTypeRef        = useRef('voice');
+  const remoteUserRef      = useRef(null);
+  const facingMode         = useRef('user');
+  const iceBuf             = useRef([]);   // buffer candidates before remoteDesc
+  const isOfferer          = useRef(false);
+  const timerStarted       = useRef(false);
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-  const fmt = (s) =>
-    `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-
-  const setCS = (state) => {
-    callStateRef.current = state;
-    setCallState(state);
-  };
-
-  const startTimer = () => {
-    clearInterval(durationTimer.current);
-    setCallDuration(0);
-    durationTimer.current = setInterval(() => setCallDuration(s => s + 1), 1000);
-  };
-
-  // ── Network quality monitor ───────────────────────────────────────────────
-  const startQualityMonitor = useCallback(() => {
-    clearInterval(qualityTimer.current);
-    qualityTimer.current = setInterval(async () => {
-      const pc = pcRef.current;
-      if (!pc) return;
-      try {
-        const stats = await pc.getStats();
-        let rtt = null;
-        let packetsLost = 0;
-        let packetsSent = 0;
-        stats.forEach(report => {
-          if (report.type === 'remote-inbound-rtp' && report.kind === 'audio') {
-            if (report.roundTripTime != null) rtt = report.roundTripTime;
-            if (report.packetsLost != null) packetsLost += report.packetsLost;
-          }
-          if (report.type === 'outbound-rtp') {
-            if (report.packetsSent != null) packetsSent += report.packetsSent;
-          }
-        });
-        const lossRate = packetsSent > 0 ? packetsLost / packetsSent : 0;
-        if (rtt === null) { setNetQuality(NET_QUALITY.UNKNOWN); return; }
-        if (rtt < 0.15 && lossRate < 0.02) setNetQuality(NET_QUALITY.GOOD);
-        else if (rtt < 0.4 && lossRate < 0.08) setNetQuality(NET_QUALITY.FAIR);
-        else setNetQuality(NET_QUALITY.POOR);
-      } catch { /* stats not available yet */ }
-    }, 3000);
+  // ── Sync state + ref together ─────────────────────────────────────────────
+  const setCS = useCallback((s) => {
+    callStateRef.current = s;
+    setCallState(s);
   }, []);
 
-  // ── Full teardown ─────────────────────────────────────────────────────────
+  // ── Duration timer ────────────────────────────────────────────────────────
+  const startTimer = useCallback(() => {
+    if (timerStarted.current) return;
+    timerStarted.current = true;
+    clearInterval(durationTimer.current);
+    setCallDuration(0);
+    durationTimer.current = setInterval(
+      () => setCallDuration(s => s + 1), 1000
+    );
+  }, []);
+
+  // ── Format seconds → MM:SS ────────────────────────────────────────────────
+  const fmt = useCallback((s) =>
+    `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`,
+  []);
+
+  // ── Attach remote stream to every output element ──────────────────────────
+  const attachRemote = useCallback((stream) => {
+    if (!stream) return;
+    remoteStreamRef.current = stream;
+    const tracks = stream.getTracks();
+    console.log('[RTC] remote stream tracks:',
+      tracks.map(t => `${t.kind} enabled=${t.enabled} muted=${t.muted}`));
+
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = stream;
+      remoteVideoRef.current.play().catch(() => {});
+    }
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = stream;
+      remoteAudioRef.current.play().catch(() => {});
+    }
+  }, []);
+
+  // ── Flush buffered ICE candidates ─────────────────────────────────────────
+  const flushIce = useCallback(async () => {
+    const pc = pcRef.current;
+    if (!pc?.remoteDescription) return;
+    const buf = iceBuf.current.splice(0);
+    for (const c of buf) {
+      try { await pc.addIceCandidate(new RTCIceCandidate(c)); }
+      catch (e) { console.warn('[RTC] flush ICE err:', e.message); }
+    }
+  }, []);
+
+  // ── Full cleanup ──────────────────────────────────────────────────────────
   const cleanup = useCallback(() => {
     clearInterval(durationTimer.current);
     clearInterval(qualityTimer.current);
+    timerStarted.current = false;
 
     localStreamRef.current?.getTracks().forEach(t => t.stop());
     localStreamRef.current  = null;
     remoteStreamRef.current = null;
-    iceCandidateBuffer.current = [];
-    isOffererRef.current = false;
+    iceBuf.current          = [];
+    isOfferer.current       = false;
 
     if (pcRef.current) { pcRef.current.close(); pcRef.current = null; }
 
@@ -140,6 +144,7 @@ export function useCall({ socket, currentUser }) {
 
     pendingOfferRef.current = null;
     remoteUserRef.current   = null;
+
     setCS(CALL_STATE.IDLE);
     setRemoteUser(null);
     setIsMuted(false);
@@ -147,189 +152,175 @@ export function useCall({ socket, currentUser }) {
     setCallDuration(0);
     setNetQuality(NET_QUALITY.UNKNOWN);
     setPermError(null);
+  }, [setCS]);
+
+  // ── Network quality polling ───────────────────────────────────────────────
+  const startQuality = useCallback(() => {
+    clearInterval(qualityTimer.current);
+    qualityTimer.current = setInterval(async () => {
+      const pc = pcRef.current;
+      if (!pc) return;
+      try {
+        const stats = await pc.getStats();
+        let rtt = null, lost = 0, sent = 0;
+        stats.forEach(r => {
+          if (r.type === 'remote-inbound-rtp' && r.kind === 'audio') {
+            if (r.roundTripTime != null) rtt = r.roundTripTime;
+            if (r.packetsLost   != null) lost += r.packetsLost;
+          }
+          if (r.type === 'outbound-rtp' && r.packetsSent != null) sent += r.packetsSent;
+        });
+        if (rtt === null) return;
+        const loss = sent > 0 ? lost / sent : 0;
+        if      (rtt < 0.15 && loss < 0.02) setNetQuality(NET_QUALITY.GOOD);
+        else if (rtt < 0.40 && loss < 0.08) setNetQuality(NET_QUALITY.FAIR);
+        else                                 setNetQuality(NET_QUALITY.POOR);
+      } catch { /* not ready yet */ }
+    }, 3000);
   }, []);
 
-  // ── Get media stream ──────────────────────────────────────────────────────
-  const getMedia = async (type) => {
+  // ── Get user media ────────────────────────────────────────────────────────
+  const getMedia = useCallback(async (type) => {
     setPermError(null);
-    // Preferred constraints — HD video, echo-cancelled audio
     const constraints = {
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl:  true,
-        sampleRate: 48000,
       },
       video: type === 'video'
-        ? { facingMode: facingMode.current, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } }
+        ? { facingMode: facingMode.current, width: { ideal: 1280 }, height: { ideal: 720 } }
         : false,
     };
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      // Verify audio track is live and enabled
-      const audioTracks = stream.getAudioTracks();
-      if (audioTracks.length === 0) {
-        toast.error('No microphone track found. Check your mic.');
+      const audio  = stream.getAudioTracks();
+      if (!audio.length) {
+        toast.error('No microphone detected.');
         stream.getTracks().forEach(t => t.stop());
         return null;
       }
-      audioTracks.forEach(t => { t.enabled = true; });
-      console.log('[WebRTC] Got media tracks:', stream.getTracks().map(t => `${t.kind}:${t.label}:enabled=${t.enabled}`));
+      audio.forEach(t => { t.enabled = true; });
+      console.log('[RTC] local tracks:',
+        stream.getTracks().map(t => `${t.kind} enabled=${t.enabled}`));
       return stream;
     } catch (err) {
-      const denied    = err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError';
-      const noDevice  = err.name === 'NotFoundError'   || err.name === 'DevicesNotFoundError';
-      const inUse     = err.name === 'NotReadableError' || err.name === 'TrackStartError';
+      const denied   = ['NotAllowedError','PermissionDeniedError'].includes(err.name);
+      const noDevice = ['NotFoundError','DevicesNotFoundError'].includes(err.name);
+      const inUse    = ['NotReadableError','TrackStartError'].includes(err.name);
 
       if (denied) {
         setPermError(type === 'video' ? 'camera' : 'mic');
-        toast.error('Permission denied. Please allow mic/camera in browser settings and reload.');
+        toast.error('Permission denied — allow mic/camera in browser settings.');
       } else if (noDevice) {
-        toast.error('No microphone/camera found. Please connect a device.');
+        toast.error('No microphone/camera found.');
       } else if (inUse) {
-        toast.error('Mic/camera is in use by another app. Please close it and try again.');
+        toast.error('Mic/camera in use by another app.');
       } else {
         toast.error(`Media error: ${err.message}`);
       }
 
-      // Fallback: audio-only if video failed for non-permission reasons
+      // Fallback to audio-only for video calls
       if (type === 'video' && !denied && !noDevice) {
         try {
-          toast('Falling back to voice-only call.', { icon: '🎙️' });
-          const fallback = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          toast('Falling back to voice-only.', { icon: '🎙️' });
+          return await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true },
             video: false,
           });
-          return fallback;
         } catch { return null; }
       }
       return null;
     }
-  };
-
-  // ── Attach local stream to video element ──────────────────────────────────
-  const attachLocalStream = (stream) => {
-    if (localVideoRef.current && stream) {
-      localVideoRef.current.srcObject = stream;
-      localVideoRef.current.muted = true; // always mute local to prevent echo
-    }
-  };
-
-  // ── Attach remote stream to all output elements ───────────────────────────
-  const attachRemoteStream = useCallback((stream) => {
-    if (!stream) return;
-    remoteStreamRef.current = stream;
-
-    // Video element (video calls)
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = stream;
-      remoteVideoRef.current.play().catch(() => {});
-    }
-    // Audio element (voice calls + audio fallback)
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = stream;
-      remoteAudioRef.current.play().catch(() => {});
-    }
-
-    console.log('[WebRTC] Remote stream attached. Tracks:',
-      stream.getTracks().map(t => `${t.kind}:enabled=${t.enabled}:muted=${t.muted}`));
   }, []);
 
-  // ── Flush buffered ICE candidates ─────────────────────────────────────────
-  const flushIceCandidates = useCallback(async () => {
-    const pc = pcRef.current;
-    if (!pc || !pc.remoteDescription) return;
-    const buf = iceCandidateBuffer.current.splice(0);
-    for (const c of buf) {
-      try { await pc.addIceCandidate(new RTCIceCandidate(c)); }
-      catch (e) { console.warn('[WebRTC] ICE candidate flush error:', e.message); }
+  // ── Attach local stream to local video element ────────────────────────────
+  const attachLocal = useCallback((stream) => {
+    if (localVideoRef.current && stream) {
+      localVideoRef.current.srcObject = stream;
+      localVideoRef.current.muted     = true;
     }
   }, []);
 
   // ── Build RTCPeerConnection ───────────────────────────────────────────────
-  const createPC = useCallback((targetUserId) => {
+  // NOTE: cleanup, attachRemote, startQuality, flushIce, startTimer, setCS
+  //       are all stable useCallback refs — safe to use inside createPC
+  const createPC = useCallback((targetId) => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
-    // ICE candidate — send to remote peer
     pc.onicecandidate = ({ candidate }) => {
       if (candidate && socket?.current) {
-        socket.current.emit('ice_candidate', { targetUserId, candidate });
+        socket.current.emit('ice_candidate', { targetUserId: targetId, candidate });
       }
     };
 
-    pc.onicecandidateerror = (e) => {
-      // Only log — these are common and usually non-fatal
-      console.warn('[WebRTC] ICE candidate error:', e.errorCode, e.errorText);
-    };
+    pc.onicecandidateerror = (e) =>
+      console.warn('[RTC] ICE error:', e.errorCode, e.errorText);
 
-    // Remote track arrived — attach to output elements
-    pc.ontrack = (event) => {
-      console.log('[WebRTC] ontrack fired:', event.track.kind, 'streams:', event.streams.length);
-      const stream = event.streams[0];
-      if (!stream) {
-        // Fallback: build stream manually from track
-        const fallbackStream = remoteStreamRef.current || new MediaStream();
-        fallbackStream.addTrack(event.track);
-        attachRemoteStream(fallbackStream);
-        return;
+    pc.ontrack = (ev) => {
+      console.log('[RTC] ontrack:', ev.track.kind, 'streams:', ev.streams.length);
+      if (ev.streams?.[0]) {
+        attachRemote(ev.streams[0]);
+      } else {
+        // Build stream manually when streams[] is empty (some browsers)
+        const s = remoteStreamRef.current ?? new MediaStream();
+        s.addTrack(ev.track);
+        attachRemote(s);
       }
-      attachRemoteStream(stream);
     };
 
-    // Connection state changes
     pc.onconnectionstatechange = () => {
-      const state = pc.connectionState;
-      console.log('[WebRTC] Connection state:', state);
-
-      if (state === 'connected') {
+      const s = pc.connectionState;
+      console.log('[RTC] connectionState:', s);
+      if (s === 'connected') {
         setCS(CALL_STATE.CONNECTED);
-        startQualityMonitor();
-      } else if (state === 'connecting') {
+        startTimer();
+        startQuality();
+      } else if (s === 'connecting') {
         setCS(CALL_STATE.CONNECTING);
-      } else if (state === 'disconnected') {
-        // Try ICE restart before giving up
+      } else if (s === 'disconnected') {
         setCS(CALL_STATE.RECONNECTING);
-        toast('Connection unstable. Reconnecting…', { icon: '🔄', id: 'reconnect' });
-        if (isOffererRef.current) {
-          setTimeout(() => attemptIceRestart(targetUserId), 2000);
+        toast('Reconnecting…', { icon: '🔄', id: 'rtc-reconnect' });
+        if (isOfferer.current) {
+          setTimeout(() => doIceRestart(targetId), 2000);
         }
-      } else if (state === 'failed') {
-        toast.error('Call connection failed.');
+      } else if (s === 'failed') {
+        toast.error('Call failed. Please try again.');
         cleanup();
-      } else if (state === 'closed') {
+      } else if (s === 'closed') {
         cleanup();
       }
     };
 
     pc.oniceconnectionstatechange = () => {
-      console.log('[WebRTC] ICE state:', pc.iceConnectionState);
-      if (pc.iceConnectionState === 'failed') {
-        if (isOffererRef.current) attemptIceRestart(targetUserId);
+      console.log('[RTC] iceState:', pc.iceConnectionState);
+      if (pc.iceConnectionState === 'failed' && isOfferer.current) {
+        doIceRestart(targetId);
       }
     };
 
     return pc;
-  }, [socket, cleanup, attachRemoteStream, startQualityMonitor]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [socket, setCS, startTimer, startQuality, attachRemote, cleanup]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── ICE restart (reconnection) ────────────────────────────────────────────
-  const attemptIceRestart = useCallback(async (targetUserId) => {
+  // ── ICE restart ───────────────────────────────────────────────────────────
+  const doIceRestart = useCallback(async (targetId) => {
     const pc = pcRef.current;
     if (!pc || !socket?.current) return;
-    console.log('[WebRTC] Attempting ICE restart…');
+    console.log('[RTC] ICE restart…');
     try {
       const offer = await pc.createOffer({ iceRestart: true });
       await pc.setLocalDescription(offer);
       socket.current.emit('call_user', {
-        targetUserId: targetUserId ?? remoteUserRef.current?.id,
+        targetUserId: targetId ?? remoteUserRef.current?.id,
         offer,
-        callType: callTypeRef.current,
-        callerName:   currentUser.name,
-        callerAvatar: currentUser.avatar_url,
-        isRestart: true,
+        callType:     callTypeRef.current,
+        callerName:   currentUser?.name,
+        callerAvatar: currentUser?.avatar_url,
+        isRestart:    true,
       });
     } catch (e) {
-      console.error('[WebRTC] ICE restart failed:', e);
+      console.error('[RTC] ICE restart failed:', e);
       cleanup();
     }
   }, [socket, currentUser, cleanup]);
@@ -337,22 +328,24 @@ export function useCall({ socket, currentUser }) {
   // ── Start outgoing call ───────────────────────────────────────────────────
   const startCall = useCallback(async (targetUser, type = 'voice') => {
     if (callStateRef.current !== CALL_STATE.IDLE) return;
-    if (!socket?.current) { toast.error('Not connected to server'); return; }
+    if (!socket?.current?.connected) {
+      toast.error('Not connected to server. Please refresh.');
+      return;
+    }
 
     const stream = await getMedia(type);
     if (!stream) return;
 
     localStreamRef.current = stream;
-    attachLocalStream(stream);
-    isOffererRef.current = true;
+    attachLocal(stream);
+    isOfferer.current = true;
 
     const pc = createPC(targetUser.id);
     pcRef.current = pc;
 
-    // Add ALL tracks — critical for bi-directional audio+video
-    stream.getTracks().forEach(track => {
-      pc.addTrack(track, stream);
-      console.log('[WebRTC] Added local track:', track.kind, track.label);
+    stream.getTracks().forEach(t => {
+      pc.addTrack(t, stream);
+      console.log('[RTC] added local track:', t.kind);
     });
 
     const offer = await pc.createOffer({
@@ -361,7 +354,7 @@ export function useCall({ socket, currentUser }) {
     });
     await pc.setLocalDescription(offer);
 
-    callTypeRef.current  = type;
+    callTypeRef.current   = type;
     remoteUserRef.current = targetUser;
     setCallType(type);
     setRemoteUser(targetUser);
@@ -370,37 +363,35 @@ export function useCall({ socket, currentUser }) {
     socket.current.emit('call_user', {
       targetUserId: targetUser.id,
       offer,
-      callType: type,
-      callerName:   currentUser.name,
-      callerAvatar: currentUser.avatar_url,
+      callType:     type,
+      callerName:   currentUser?.name,
+      callerAvatar: currentUser?.avatar_url,
     });
-  }, [socket, currentUser, createPC]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [socket, currentUser, getMedia, attachLocal, createPC, setCS]);
 
   // ── Accept incoming call ──────────────────────────────────────────────────
   const acceptCall = useCallback(async () => {
-    const { callerId, callerName, callerAvatar, offer, callType: inType } = pendingOfferRef.current || {};
+    const { callerId, callerName, callerAvatar, offer, callType: inType } =
+      pendingOfferRef.current || {};
     if (!offer) return;
 
     const stream = await getMedia(inType);
     if (!stream) return;
 
     localStreamRef.current = stream;
-    attachLocalStream(stream);
-    isOffererRef.current = false;
+    attachLocal(stream);
+    isOfferer.current = false;
 
     const pc = createPC(callerId);
     pcRef.current = pc;
 
-    // Add ALL tracks before setting remote description
-    stream.getTracks().forEach(track => {
-      pc.addTrack(track, stream);
-      console.log('[WebRTC] Added local track (callee):', track.kind, track.label);
+    stream.getTracks().forEach(t => {
+      pc.addTrack(t, stream);
+      console.log('[RTC] added local track (callee):', t.kind);
     });
 
     await pc.setRemoteDescription(new RTCSessionDescription(offer));
-
-    // Flush any ICE candidates that arrived before we set remote description
-    await flushIceCandidates();
+    await flushIce();
 
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
@@ -410,82 +401,79 @@ export function useCall({ socket, currentUser }) {
     setCallType(inType);
     setRemoteUser({ id: callerId, name: callerName, avatar: callerAvatar });
     setCS(CALL_STATE.CONNECTING);
-    startTimer();
 
     socket.current?.emit('call_answer', { targetUserId: callerId, answer });
-  }, [createPC, socket, flushIceCandidates]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [getMedia, attachLocal, createPC, flushIce, socket, setCS]);
 
-  // ── Reject incoming call ──────────────────────────────────────────────────
+  // ── Reject call ───────────────────────────────────────────────────────────
   const rejectCall = useCallback(() => {
-    const callerId = pendingOfferRef.current?.callerId;
-    if (callerId) socket.current?.emit('call_reject', { targetUserId: callerId });
+    const id = pendingOfferRef.current?.callerId;
+    if (id) socket.current?.emit('call_reject', { targetUserId: id });
     cleanup();
   }, [socket, cleanup]);
 
   // ── End call ──────────────────────────────────────────────────────────────
-  const endCall = useCallback((targetId, emitSignal = true) => {
+  const endCall = useCallback((targetId, emit = true) => {
     const tid = targetId ?? remoteUserRef.current?.id;
-    if (emitSignal && tid) socket.current?.emit('call_end', { targetUserId: tid });
+    if (emit && tid) socket.current?.emit('call_end', { targetUserId: tid });
     cleanup();
   }, [socket, cleanup]);
 
-  // ── Toggle mute ───────────────────────────────────────────────────────────
+  // ── Mute toggle ───────────────────────────────────────────────────────────
   const toggleMute = useCallback(() => {
     const tracks = localStreamRef.current?.getAudioTracks() ?? [];
-    if (tracks.length === 0) { toast.error('No audio track found'); return; }
-    const newEnabled = !tracks[0].enabled;
-    tracks.forEach(t => { t.enabled = newEnabled; });
-    setIsMuted(!newEnabled);
-    console.log('[WebRTC] Audio tracks enabled:', newEnabled);
+    if (!tracks.length) { toast.error('No audio track'); return; }
+    const next = !tracks[0].enabled;
+    tracks.forEach(t => { t.enabled = next; });
+    setIsMuted(!next);
   }, []);
 
-  // ── Toggle camera ─────────────────────────────────────────────────────────
+  // ── Camera toggle ─────────────────────────────────────────────────────────
   const toggleCamera = useCallback(() => {
     const tracks = localStreamRef.current?.getVideoTracks() ?? [];
-    if (tracks.length === 0) return;
-    const newEnabled = !tracks[0].enabled;
-    tracks.forEach(t => { t.enabled = newEnabled; });
-    setIsCamOff(!newEnabled);
+    if (!tracks.length) return;
+    const next = !tracks[0].enabled;
+    tracks.forEach(t => { t.enabled = next; });
+    setIsCamOff(!next);
   }, []);
 
-  // ── Switch camera (front ↔ back) ──────────────────────────────────────────
+  // ── Switch camera ─────────────────────────────────────────────────────────
   const switchCamera = useCallback(async () => {
     if (!pcRef.current || !localStreamRef.current) return;
     facingMode.current = facingMode.current === 'user' ? 'environment' : 'user';
     try {
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: facingMode.current },
+      const ns  = await navigator.mediaDevices.getUserMedia({
+        audio: false, video: { facingMode: facingMode.current },
       });
-      const newTrack = newStream.getVideoTracks()[0];
-      const sender = pcRef.current.getSenders().find(s => s.track?.kind === 'video');
-      if (sender) await sender.replaceTrack(newTrack);
-
-      const oldTrack = localStreamRef.current.getVideoTracks()[0];
-      if (oldTrack) { oldTrack.stop(); localStreamRef.current.removeTrack(oldTrack); }
-      localStreamRef.current.addTrack(newTrack);
-      attachLocalStream(localStreamRef.current);
-    } catch {
-      toast.error('Could not switch camera');
-    }
-  }, []);
+      const nt  = ns.getVideoTracks()[0];
+      const snd = pcRef.current.getSenders().find(s => s.track?.kind === 'video');
+      if (snd) await snd.replaceTrack(nt);
+      const ot = localStreamRef.current.getVideoTracks()[0];
+      if (ot) { ot.stop(); localStreamRef.current.removeTrack(ot); }
+      localStreamRef.current.addTrack(nt);
+      attachLocal(localStreamRef.current);
+    } catch { toast.error('Could not switch camera'); }
+  }, [attachLocal]);
 
   // ── Socket signaling listeners ────────────────────────────────────────────
+  // Re-attach whenever the socket instance changes (reconnect, login, etc.)
   useEffect(() => {
     const sock = socket?.current;
-    if (!sock || listenersAdded.current) return;
-    listenersAdded.current = true;
+    if (!sock) return;
 
-    const onIncomingCall = ({ callerId, callerName, callerAvatar, callType: inType, offer, isRestart }) => {
-      // ICE restart from remote — handle renegotiation
-      if (isRestart && pcRef.current && callStateRef.current === CALL_STATE.CONNECTED) {
-        pcRef.current.setRemoteDescription(new RTCSessionDescription(offer))
+    const onIncoming = ({ callerId, callerName, callerAvatar, callType: inType, offer, isRestart }) => {
+      // ICE restart renegotiation — don't show incoming UI
+      if (isRestart && pcRef.current &&
+          (callStateRef.current === CALL_STATE.CONNECTED ||
+           callStateRef.current === CALL_STATE.RECONNECTING)) {
+        pcRef.current
+          .setRemoteDescription(new RTCSessionDescription(offer))
           .then(() => pcRef.current.createAnswer())
-          .then(answer => {
-            pcRef.current.setLocalDescription(answer);
-            sock.emit('call_answer', { targetUserId: callerId, answer });
+          .then(ans => {
+            pcRef.current.setLocalDescription(ans);
+            sock.emit('call_answer', { targetUserId: callerId, answer: ans });
           })
-          .catch(e => console.error('[WebRTC] ICE restart answer failed:', e));
+          .catch(e => console.error('[RTC] restart answer err:', e));
         return;
       }
 
@@ -493,82 +481,78 @@ export function useCall({ socket, currentUser }) {
         sock.emit('call_reject', { targetUserId: callerId });
         return;
       }
+
       pendingOfferRef.current = { callerId, callerName, callerAvatar, callType: inType, offer };
-      callTypeRef.current = inType || 'voice';
+      callTypeRef.current     = inType || 'voice';
+      remoteUserRef.current   = { id: callerId, name: callerName, avatar: callerAvatar };
       setCallType(inType || 'voice');
       setRemoteUser({ id: callerId, name: callerName, avatar: callerAvatar });
-      remoteUserRef.current = { id: callerId, name: callerName, avatar: callerAvatar };
       setCS(CALL_STATE.RINGING);
     };
 
-    const onCallAnswered = async ({ answer }) => {
+    const onAnswered = async ({ answer }) => {
       const pc = pcRef.current;
       if (!pc) return;
       try {
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
-        // Flush buffered ICE candidates now that remote description is set
-        await flushIceCandidates();
+        await flushIce();
         setCS(CALL_STATE.CONNECTING);
-        startTimer();
-        console.log('[WebRTC] Remote description set (answer). Senders:',
+        console.log('[RTC] answer set. senders:',
           pc.getSenders().map(s => s.track?.kind));
       } catch (e) {
-        console.error('[WebRTC] setRemoteDescription (answer) failed:', e);
-        toast.error('Call setup failed. Please try again.');
+        console.error('[RTC] setRemoteDesc(answer) failed:', e);
+        toast.error('Call setup failed.');
         cleanup();
       }
     };
 
-    const onCallRejected = () => {
-      toast('Call was declined.', { icon: '📵' });
+    const onRejected = () => {
+      toast('Call declined.', { icon: '📵' });
       cleanup();
     };
 
-    const onIceCandidate = async ({ candidate }) => {
+    const onIce = async ({ candidate }) => {
       if (!candidate) return;
       const pc = pcRef.current;
       if (!pc) return;
-
-      // If remote description not set yet, buffer the candidate
       if (!pc.remoteDescription) {
-        iceCandidateBuffer.current.push(candidate);
-        console.log('[WebRTC] Buffered ICE candidate (no remote desc yet)');
+        iceBuf.current.push(candidate);
         return;
       }
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-      } catch (e) {
-        console.warn('[WebRTC] addIceCandidate error:', e.message);
-      }
+      try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); }
+      catch (e) { console.warn('[RTC] addIceCandidate:', e.message); }
     };
 
-    const onCallEnded = () => {
+    const onEnded = () => {
       toast('Call ended.', { icon: '📞' });
       cleanup();
     };
 
-    sock.on('incoming_call', onIncomingCall);
-    sock.on('call_answered', onCallAnswered);
-    sock.on('call_rejected', onCallRejected);
-    sock.on('ice_candidate', onIceCandidate);
-    sock.on('call_ended',    onCallEnded);
+    sock.on('incoming_call', onIncoming);
+    sock.on('call_answered', onAnswered);
+    sock.on('call_rejected', onRejected);
+    sock.on('ice_candidate', onIce);
+    sock.on('call_ended',    onEnded);
 
     return () => {
-      sock.off('incoming_call', onIncomingCall);
-      sock.off('call_answered', onCallAnswered);
-      sock.off('call_rejected', onCallRejected);
-      sock.off('ice_candidate', onIceCandidate);
-      sock.off('call_ended',    onCallEnded);
-      listenersAdded.current = false;
+      sock.off('incoming_call', onIncoming);
+      sock.off('call_answered', onAnswered);
+      sock.off('call_rejected', onRejected);
+      sock.off('ice_candidate', onIce);
+      sock.off('call_ended',    onEnded);
     };
-  }, [socket?.current, cleanup, flushIceCandidates]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Re-run when socket.current changes (new socket instance after reconnect)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket?.current]);
 
   // Cleanup on unmount
-  useEffect(() => () => cleanup(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => cleanup(), []);
 
   return {
-    callState, callType, remoteUser, isMuted, isCamOff,
-    callDuration, fmt, netQuality, permError,
+    callState, callType, remoteUser,
+    isMuted, isCamOff, callDuration, fmt,
+    netQuality, permError,
     localVideoRef, remoteVideoRef, remoteAudioRef, remoteStreamRef,
     startCall, acceptCall, rejectCall, endCall,
     toggleMute, toggleCamera, switchCamera,
