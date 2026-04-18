@@ -68,6 +68,12 @@ app.use('/api/withdrawals', require('./routes/withdrawals'));
 const { getPublicHomepageData } = require('./controllers/adminController');
 app.get('/api/homepage', getPublicHomepageData);
 app.get('/api/health', (_, res) => res.json({ status: 'ok', timestamp: new Date() }));
+app.get('/', (_, res) => res.json({
+  name: 'Dream Paintings API',
+  status: 'running',
+  version: '1.0.0',
+  endpoints: '/api/health',
+}));
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
