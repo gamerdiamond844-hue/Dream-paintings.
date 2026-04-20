@@ -10,7 +10,7 @@ import CategoryGrid from '../components/CategoryGrid';
 import api from '../utils/api';
 
 const SkeletonGrid = ({ count, h = 'h-96' }) => (
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
     {Array.from({ length: count }).map((_, i) => (
       <div key={i} className={`skeleton ${h} rounded-3xl`} />
     ))}
@@ -18,9 +18,9 @@ const SkeletonGrid = ({ count, h = 'h-96' }) => (
 );
 
 const EmptyState = ({ message }) => (
-  <div className="col-span-full text-center py-20 text-gray-400">
+  <div className="col-span-full text-center py-16 text-gray-400">
     <Palette size={48} className="mx-auto mb-4 opacity-30" />
-    <p className="text-lg">{message}</p>
+    <p className="text-base">{message}</p>
   </div>
 );
 
@@ -45,22 +45,22 @@ export default function Home() {
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1.2, ease: 'easeOut' }}
-          className="text-center text-white max-w-4xl mx-auto px-6 z-20 relative"
+          className="text-center text-white max-w-4xl mx-auto px-4 z-20 relative"
         >
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.4, duration: 0.8 }}
-            className="inline-flex items-center gap-3 bg-white/20 backdrop-blur-xl border border-white/30 rounded-full px-6 py-3 mb-12"
+            className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-xl border border-white/30 rounded-full px-4 py-2 mb-6"
           >
-            <Sparkles size={20} />
-            <span className="uppercase tracking-wider font-medium text-sm">Premium Art Marketplace</span>
+            <Sparkles size={16} />
+            <span className="uppercase tracking-wider font-medium text-xs sm:text-sm">Premium Art Marketplace</span>
           </motion.div>
           <motion.h1
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6, duration: 1 }}
-            className="font-display text-6xl md:text-7xl lg:text-9xl font-black leading-none mb-8 bg-gradient-to-r from-white via-red-100 to-white bg-clip-text text-transparent drop-shadow-2xl"
+            className="font-display text-5xl sm:text-6xl md:text-7xl lg:text-9xl font-black leading-none mb-5 bg-gradient-to-r from-white via-red-100 to-white bg-clip-text text-transparent drop-shadow-2xl"
           >
             Dream<span className="block bg-gradient-to-r from-red-400 via-red-500 to-rose-600 bg-clip-text text-transparent">Paintings</span>
           </motion.h1>
@@ -68,21 +68,21 @@ export default function Home() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.9, duration: 0.8 }}
-            className="text-xl md:text-2xl text-white/90 max-w-2xl mx-auto mb-12 leading-relaxed"
+            className="text-sm sm:text-xl md:text-2xl text-white/90 max-w-2xl mx-auto mb-8 leading-relaxed px-2"
           >
             Discover extraordinary original paintings from the world's most talented artists.
           </motion.p>
           <motion.div
-            className="flex flex-col sm:flex-row gap-4 justify-center"
+            className="flex flex-col sm:flex-row gap-3 justify-center"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 1.2, duration: 0.6 }}
           >
-            <Link to="/gallery" className="glass bg-white/90 text-gray-900 px-10 py-6 rounded-3xl font-bold text-lg backdrop-blur-xl border border-white/50 shadow-2xl hover:-translate-y-2 transition-all duration-300 flex items-center gap-3 mx-auto sm:mx-0 w-full sm:w-auto justify-center">
-              Explore Gallery <ArrowRight size={24} />
+            <Link to="/gallery" className="glass bg-white/90 text-gray-900 px-6 py-4 rounded-2xl font-bold text-base backdrop-blur-xl border border-white/50 shadow-2xl hover:-translate-y-1 transition-all duration-300 flex items-center gap-2 mx-auto sm:mx-0 w-full sm:w-auto justify-center">
+              Explore Gallery <ArrowRight size={20} />
             </Link>
-            <Link to="/register?role=artist" className="bg-gradient-to-r from-red-500 to-rose-600 text-white px-10 py-6 rounded-3xl font-bold text-lg shadow-2xl hover:-translate-y-2 transition-all duration-300 flex items-center gap-3 mx-auto sm:mx-0 w-full sm:w-auto justify-center">
-              Become Artist <ArrowRight size={24} />
+            <Link to="/register?role=artist" className="bg-gradient-to-r from-red-500 to-rose-600 text-white px-6 py-4 rounded-2xl font-bold text-base shadow-2xl hover:-translate-y-1 transition-all duration-300 flex items-center gap-2 mx-auto sm:mx-0 w-full sm:w-auto justify-center">
+              Become Artist <ArrowRight size={20} />
             </Link>
           </motion.div>
         </motion.div>
@@ -90,8 +90,8 @@ export default function Home() {
 
       {/* Live Stats */}
       {!loading && stats.totalPaintings > 0 && (
-        <section className="py-16 bg-gradient-to-r from-red-600 to-rose-700">
-          <div className="max-w-5xl mx-auto px-6 grid grid-cols-2 md:grid-cols-4 gap-8 text-white text-center">
+        <section className="py-10 bg-gradient-to-r from-red-600 to-rose-700">
+          <div className="max-w-5xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-6 text-white text-center">
             {[
               { icon: Palette, label: 'Paintings', value: stats.totalPaintings },
               { icon: Users, label: 'Artists', value: stats.totalArtists },
@@ -99,9 +99,9 @@ export default function Home() {
               { icon: Users, label: 'Members', value: stats.totalUsers },
             ].map(({ icon: Icon, label, value }) => (
               <div key={label}>
-                <Icon size={28} className="mx-auto mb-2 opacity-80" />
-                <p className="text-3xl font-black font-display">{value?.toLocaleString('en-IN')}</p>
-                <p className="text-red-200 text-sm mt-1">{label}</p>
+                <Icon size={24} className="mx-auto mb-2 opacity-80" />
+                <p className="text-2xl sm:text-3xl font-black font-display">{value?.toLocaleString('en-IN')}</p>
+                <p className="text-red-200 text-xs sm:text-sm mt-1">{label}</p>
               </div>
             ))}
           </div>
@@ -114,27 +114,27 @@ export default function Home() {
           initial={{ opacity: 0, y: 50 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="py-32 bg-gradient-to-b from-white to-red-50/30"
+          className="py-16 sm:py-24 bg-gradient-to-b from-white to-red-50/30"
         >
-          <div className="max-w-7xl mx-auto px-6">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <div className="flex items-center gap-3 mb-3">
-              <TrendingUp size={24} className="text-red-600 shrink-0" />
-              <span className="uppercase tracking-wider text-sm font-bold text-red-600">Featured Collection</span>
+              <TrendingUp size={20} className="text-red-600 shrink-0" />
+              <span className="uppercase tracking-wider text-xs sm:text-sm font-bold text-red-600">Featured Collection</span>
             </div>
-            <h2 className="font-display text-5xl lg:text-6xl font-black text-gray-900 mb-20">
+            <h2 className="font-display text-3xl sm:text-4xl lg:text-6xl font-black text-gray-900 mb-10 sm:mb-16">
               {cfg.featured_title || 'Curated Masterpieces'}
             </h2>
             {loading ? (
               <SkeletonGrid count={6} />
             ) : data?.featured?.length ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-8">
                 {data.featured.map(p => <PaintingCard key={p.id} painting={p} />)}
               </div>
             ) : (
               <EmptyState message="No featured paintings yet. Admin can feature paintings from the dashboard." />
             )}
-            <div className="text-center mt-24">
-              <Link to="/gallery" className="glass bg-white border border-red-200/50 text-red-600 px-12 py-6 rounded-3xl font-bold text-xl hover:shadow-xl transition-all">
+            <div className="text-center mt-12 sm:mt-20">
+              <Link to="/gallery" className="glass bg-white border border-red-200/50 text-red-600 px-8 py-4 rounded-3xl font-bold text-base sm:text-xl hover:shadow-xl transition-all">
                 View All Gallery
               </Link>
             </div>
@@ -144,24 +144,24 @@ export default function Home() {
 
       {/* Master Artists */}
       {(loading || cfg.section_artists !== false) && (
-        <section className="py-32 bg-white relative overflow-hidden">
+        <section className="py-16 sm:py-24 bg-white relative overflow-hidden">
           <div className="absolute inset-y-0 left-0 w-64 bg-gradient-to-b from-red-500/5 to-rose-500/5 -skew-x-12" />
-          <div className="relative max-w-7xl mx-auto px-6">
+          <div className="relative max-w-7xl mx-auto px-4 sm:px-6">
             <div className="flex items-center gap-3 mb-3">
-              <Users size={24} className="text-red-600" />
-              <span className="uppercase tracking-wider text-sm font-bold text-red-600">Top Creators</span>
+              <Users size={20} className="text-red-600" />
+              <span className="uppercase tracking-wider text-xs sm:text-sm font-bold text-red-600">Top Creators</span>
             </div>
-            <h2 className="font-display text-5xl lg:text-6xl font-black text-gray-900 mb-20">
+            <h2 className="font-display text-3xl sm:text-4xl lg:text-6xl font-black text-gray-900 mb-10 sm:mb-16">
               {cfg.artists_title || 'Master Artists'}
             </h2>
             {loading ? (
-              <div className="flex gap-8 overflow-x-auto pb-8">
-                {Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton w-80 h-64 rounded-3xl flex-shrink-0" />)}
+              <div className="flex gap-6 overflow-x-auto pb-6">
+                {Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton w-72 h-56 rounded-3xl flex-shrink-0" />)}
               </div>
             ) : data?.artists?.length ? (
-              <div className="flex gap-8 overflow-x-auto pb-8 -mx-6 px-6 scrollbar-thin scrollbar-thumb-red-200 snap-x snap-mandatory">
+              <div className="flex gap-6 overflow-x-auto pb-6 -mx-4 px-4 scrollbar-thin scrollbar-thumb-red-200 snap-x snap-mandatory">
                 {data.artists.map(artist => (
-                  <div key={artist.id} className="flex-shrink-0 w-80 snap-center">
+                  <div key={artist.id} className="flex-shrink-0 w-72 sm:w-80 snap-center">
                     <ArtistCard artist={{ ...artist, paintings: artist.painting_count }} />
                   </div>
                 ))}
@@ -179,21 +179,21 @@ export default function Home() {
           initial={{ opacity: 0, y: 50 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="py-32 bg-gradient-to-t from-red-50 to-white"
+          className="py-16 sm:py-24 bg-gradient-to-t from-red-50 to-white"
         >
-          <div className="max-w-7xl mx-auto px-6">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <div className="flex items-center gap-3 mb-3">
-              <Award size={24} className="text-red-600" />
-              <span className="uppercase tracking-wider text-sm font-bold text-red-600">What's Hot</span>
+              <Award size={20} className="text-red-600" />
+              <span className="uppercase tracking-wider text-xs sm:text-sm font-bold text-red-600">What's Hot</span>
             </div>
-            <h2 className="font-display text-5xl lg:text-6xl font-black text-gray-900 mb-20">
+            <h2 className="font-display text-3xl sm:text-4xl lg:text-6xl font-black text-gray-900 mb-10 sm:mb-16">
               {cfg.trending_title || 'Trending Now'}
             </h2>
             {loading ? (
               <SkeletonGrid count={8} h="h-72" />
             ) : data?.trending?.length ? (
-              <div className="columns-1 md:columns-2 lg:columns-3 xl:columns-4 gap-8 space-y-8">
-                {data.trending.map(p => <PaintingCard key={p.id} painting={p} className="break-inside-avoid mb-8" />)}
+              <div className="columns-1 sm:columns-2 lg:columns-3 xl:columns-4 gap-6 space-y-6">
+                {data.trending.map(p => <PaintingCard key={p.id} painting={p} className="break-inside-avoid mb-6" />)}
               </div>
             ) : (
               <EmptyState message="No trending paintings yet." />
@@ -208,20 +208,20 @@ export default function Home() {
           initial={{ opacity: 0, y: 50 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="py-32 bg-white"
+          className="py-16 sm:py-24 bg-white"
         >
-          <div className="max-w-7xl mx-auto px-6">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6">
             <div className="flex items-center gap-3 mb-3">
-              <Sparkles size={24} className="text-red-600" />
-              <span className="uppercase tracking-wider text-sm font-bold text-red-600">Just Added</span>
+              <Sparkles size={20} className="text-red-600" />
+              <span className="uppercase tracking-wider text-xs sm:text-sm font-bold text-red-600">Just Added</span>
             </div>
-            <h2 className="font-display text-5xl lg:text-6xl font-black text-gray-900 mb-20">
+            <h2 className="font-display text-3xl sm:text-4xl lg:text-6xl font-black text-gray-900 mb-10 sm:mb-16">
               {cfg.recent_title || 'Recent Launch'}
             </h2>
             {loading ? (
               <SkeletonGrid count={6} />
             ) : data?.recent?.length ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-8">
                 {data.recent.map(p => <PaintingCard key={p.id} painting={p} />)}
               </div>
             ) : (
@@ -232,13 +232,13 @@ export default function Home() {
       )}
 
       {/* Categories */}
-      <section className="py-32 bg-white/50">
-        <div className="max-w-7xl mx-auto px-6">
+      <section className="py-16 sm:py-24 bg-white/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <motion.h2
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="font-display text-5xl lg:text-6xl font-black text-gray-900 text-center mb-24"
+            className="font-display text-3xl sm:text-4xl lg:text-6xl font-black text-gray-900 text-center mb-12 sm:mb-20"
           >
             Explore by Style
           </motion.h2>
@@ -248,21 +248,21 @@ export default function Home() {
 
       {/* Testimonials */}
       {(loading || cfg.section_testimonials !== false) && (
-        <section className="py-32 bg-gradient-to-b from-red-600/5 to-rose-500/5">
-          <div className="max-w-4xl mx-auto px-6">
-            <div className="text-center mb-24">
-              <div className="inline-flex items-center gap-3 bg-gradient-to-r from-red-500/20 to-rose-500/20 text-red-700 px-6 py-3 rounded-2xl border border-red-200/50 mx-auto mb-8">
-                <Star size={20} />
-                <span className="font-semibold">5-Star Rated Platform</span>
+        <section className="py-16 sm:py-24 bg-gradient-to-b from-red-600/5 to-rose-500/5">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6">
+            <div className="text-center mb-12 sm:mb-20">
+              <div className="inline-flex items-center gap-2 bg-gradient-to-r from-red-500/20 to-rose-500/20 text-red-700 px-4 py-2 rounded-2xl border border-red-200/50 mx-auto mb-6">
+                <Star size={18} />
+                <span className="font-semibold text-sm">5-Star Rated Platform</span>
               </div>
-              <h2 className="font-display text-5xl lg:text-6xl font-black text-gray-900 mb-8">
+              <h2 className="font-display text-3xl sm:text-4xl lg:text-6xl font-black text-gray-900 mb-4">
                 {cfg.testimonials_title || 'What Artists Say'}
               </h2>
             </div>
             {loading ? (
               <SkeletonGrid count={3} h="h-56" />
             ) : data?.testimonials?.length ? (
-              <div className="grid md:grid-cols-3 gap-8">
+              <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6">
                 {data.testimonials.map((t, i) => (
                   <motion.div key={t.id} initial={{ opacity: 0, y: 50 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.15 }}>
                     <TestimonialCard testimonial={t} />
@@ -277,48 +277,48 @@ export default function Home() {
       )}
 
       {/* CTA */}
-      <motion.section initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="py-32 relative overflow-hidden">
+      <motion.section initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="py-16 sm:py-24 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-red-600 via-rose-700 to-red-800 opacity-95" />
-        <div className="relative max-w-4xl mx-auto px-6 text-center text-white">
-          <h2 className="font-display text-5xl md:text-6xl font-black mb-6 drop-shadow-2xl">Ready to Create?</h2>
-          <p className="text-xl md:text-2xl text-red-100 mb-12 max-w-2xl mx-auto leading-relaxed">
+        <div className="relative max-w-4xl mx-auto px-4 text-center text-white">
+          <h2 className="font-display text-3xl sm:text-5xl md:text-6xl font-black mb-4 drop-shadow-2xl">Ready to Create?</h2>
+          <p className="text-sm sm:text-xl md:text-2xl text-red-100 mb-8 max-w-2xl mx-auto leading-relaxed px-2">
             Join our exclusive platform and transform your passion into a thriving art career.
           </p>
-          <Link to="/register?role=artist" className="glass bg-white/20 backdrop-blur-xl text-white border border-white/40 px-12 py-8 rounded-3xl font-bold text-2xl shadow-2xl hover:bg-white/30 transition-all duration-300 inline-flex items-center gap-4">
-            Start Selling <ArrowRight size={28} />
+          <Link to="/register?role=artist" className="glass bg-white/20 backdrop-blur-xl text-white border border-white/40 px-8 py-5 rounded-3xl font-bold text-lg shadow-2xl hover:bg-white/30 transition-all duration-300 inline-flex items-center gap-3">
+            Start Selling <ArrowRight size={22} />
           </Link>
         </div>
       </motion.section>
 
       {/* Footer */}
-      <footer className="bg-gray-950/95 backdrop-blur-xl border-t border-white/10 text-gray-400 py-16">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="grid md:grid-cols-4 gap-12 text-sm">
-            <div className="flex items-center gap-4 mb-8 md:mb-0">
-              <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-rose-600 rounded-2xl flex items-center justify-center shadow-2xl">
-                <Palette className="text-white w-6 h-6" />
+      <footer className="bg-gray-950/95 backdrop-blur-xl border-t border-white/10 text-gray-400 py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-sm">
+            <div className="col-span-2 md:col-span-1 flex items-center gap-3 mb-4 md:mb-0">
+              <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-rose-600 rounded-2xl flex items-center justify-center shadow-2xl shrink-0">
+                <Palette className="text-white w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-display text-2xl font-bold text-white mb-2 gradient-text">Dream Paintings</h3>
-                <p>Luxury art marketplace</p>
+                <h3 className="font-display text-lg font-bold text-white gradient-text">Dream Paintings</h3>
+                <p className="text-xs">Luxury art marketplace</p>
               </div>
             </div>
             <div>
-              <h4 className="font-semibold text-white mb-6">Platform</h4>
-              <ul className="space-y-3">
+              <h4 className="font-semibold text-white mb-4">Platform</h4>
+              <ul className="space-y-2">
                 <li><Link to="/gallery" className="hover:text-red-400 transition-colors">Gallery</Link></li>
                 <li><Link to="/login" className="hover:text-red-400 transition-colors">Login</Link></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-white mb-6">Artists</h4>
-              <ul className="space-y-3">
+              <h4 className="font-semibold text-white mb-4">Artists</h4>
+              <ul className="space-y-2">
                 <li><Link to="/register?role=artist" className="hover:text-red-400 transition-colors">Sell Art</Link></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-white mb-6">Company</h4>
-              <p className="mb-4">Premium art for modern collectors</p>
+              <h4 className="font-semibold text-white mb-4">Company</h4>
+              <p className="mb-3 text-xs">Premium art for modern collectors</p>
               <p className="text-xs opacity-75">© 2024 Dream Paintings. All rights reserved.</p>
             </div>
           </div>

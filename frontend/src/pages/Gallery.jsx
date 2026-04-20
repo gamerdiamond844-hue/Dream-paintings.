@@ -39,8 +39,8 @@ export default function Gallery() {
     <div className="content-layer min-h-screen pt-24 pb-16">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="mb-10">
-          <h1 className="font-display text-5xl font-bold text-gray-900 mb-3">Gallery</h1>
+        <div className="mb-8">
+          <h1 className="font-display text-3xl sm:text-5xl font-bold text-gray-900 mb-2">Gallery</h1>
           <p className="text-gray-500">{total} original artworks available</p>
         </div>
 
@@ -94,7 +94,7 @@ export default function Gallery() {
               className="mt-4 text-red-600 text-sm hover:underline">Clear filters</button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-6">
             {paintings.map(p => <PaintingCard key={p.id} painting={p} />)}
           </div>
         )}

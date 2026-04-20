@@ -110,7 +110,7 @@ export default function PaintingDetail() {
                 {painting.category}
               </span>
             )}
-            <h1 className="font-display text-4xl md:text-5xl font-bold text-gray-900 mb-4">{painting.title}</h1>
+            <h1 className="font-display text-2xl sm:text-4xl md:text-5xl font-bold text-gray-900 mb-4">{painting.title}</h1>
 
             {/* Artist */}
             <Link to={`/artist/${painting.artist_id}`} className="flex items-center gap-3 mb-6 group w-fit">
@@ -141,10 +141,10 @@ export default function PaintingDetail() {
             <div className="mb-8">
               {painting.discount_percent > 0 ? (
                 <div className="flex items-baseline gap-3">
-                  <span className="font-display text-4xl font-bold gradient-text">
+                  <span className="font-display text-2xl sm:text-4xl font-bold gradient-text">
                     ₹{(parseFloat(painting.price) * (1 - painting.discount_percent / 100)).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                   </span>
-                  <span className="text-xl text-gray-400 line-through">
+                  <span className="text-lg text-gray-400 line-through">
                     ₹{parseFloat(painting.price).toLocaleString('en-IN')}
                   </span>
                   <span className="text-sm font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">
@@ -152,7 +152,7 @@ export default function PaintingDetail() {
                   </span>
                 </div>
               ) : (
-                <span className="font-display text-4xl font-bold gradient-text">
+                <span className="font-display text-2xl sm:text-4xl font-bold gradient-text">
                   ₹{parseFloat(painting.price).toLocaleString('en-IN')}
                 </span>
               )}

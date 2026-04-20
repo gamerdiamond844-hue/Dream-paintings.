@@ -56,13 +56,15 @@ body {
   transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
-.painting-card:hover {
-  transform: translateY(-8px) scale(1.02);
-  box-shadow: 0 20px 60px rgba(225, 29, 72, 0.2), 0 0 0 1px rgba(225, 29, 72, 0.3);
-}
+@media (hover: hover) {
+  .painting-card:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: 0 20px 60px rgba(225, 29, 72, 0.2), 0 0 0 1px rgba(225, 29, 72, 0.3);
+  }
 
-.painting-card:hover .painting-img {
-  transform: scale(1.08);
+  .painting-card:hover .painting-img {
+    transform: scale(1.08);
+  }
 }
 
 .painting-img {

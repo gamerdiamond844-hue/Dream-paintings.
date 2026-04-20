@@ -76,7 +76,7 @@ export default function Profile() {
         <div className="flex flex-col gap-4 mb-10">
           <div>
             <p className="text-sm uppercase tracking-[0.24em] text-red-600 font-semibold">Dashboard</p>
-            <h1 className="font-display text-5xl font-bold text-gray-900 mt-3 flex items-center gap-3">
+            <h1 className="font-display text-3xl sm:text-5xl font-bold text-gray-900 mt-3 flex items-center gap-3">
               Welcome back, {user?.name?.split(' ')[0]}
               {user?.is_verified && <VerifiedBadge level={user?.badge_level} size="lg" />}
             </h1>
@@ -110,7 +110,7 @@ export default function Profile() {
           </div>
         ) : (
           <div className="grid gap-6 xl:grid-cols-[1.6fr,1fr]">
-            <div className="space-y-6">
+            <div className="space-y-6 order-2 xl:order-1">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="glass rounded-3xl p-6 border border-red-100 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
@@ -216,7 +216,7 @@ export default function Profile() {
               )}
             </div>
 
-            <div className="glass rounded-3xl p-8 shadow-xl shadow-red-50 border border-red-100">
+            <div className="glass rounded-3xl p-6 sm:p-8 shadow-xl shadow-red-50 border border-red-100 order-1 xl:order-2">
               <div className="flex items-center gap-4 mb-6">
                 <div className="w-12 h-12 rounded-3xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center text-white">
                   <Camera size={22} />

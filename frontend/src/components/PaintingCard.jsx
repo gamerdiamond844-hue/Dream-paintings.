@@ -13,8 +13,8 @@ export default function PaintingCard({ painting, showStatus = false }) {
             loading="lazy"
             className="painting-img w-full h-full object-cover"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-          <div className="absolute bottom-3 left-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-2 group-hover:translate-y-0">
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-300" />
+          <div className="absolute bottom-3 left-3 right-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all duration-300 sm:translate-y-2 sm:group-hover:translate-y-0">
             <div className="flex items-center gap-3 text-white text-xs">
               <span className="flex items-center gap-1"><Heart size={12} /> {painting.likes_count || 0}</span>
               <span className="flex items-center gap-1"><MessageCircle size={12} /> {painting.comments_count || 0}</span>
