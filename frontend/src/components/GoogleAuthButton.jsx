@@ -8,7 +8,9 @@ export default function GoogleAuthButton({ redirectTo = '/' }) {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
-  const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+  // Fallback hardcoded so button never disappears if Vite env fails to inject
+  const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
+    || '456044016552-smhrefuqv5m5vuv6h1uai7kk8bog5kg0.apps.googleusercontent.com';
 
   const handleCredentialResponse = useCallback(async ({ credential }) => {
     setLoading(true);
