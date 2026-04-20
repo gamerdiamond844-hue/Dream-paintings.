@@ -8,19 +8,15 @@ export default function GoogleAuthButton() {
 
   const handleClick = () => {
     setLoading(true);
-
     const redirectUri = `${window.location.origin}/auth/google/callback`;
-
     const params = new URLSearchParams({
       client_id: CLIENT_ID,
       redirect_uri: redirectUri,
-      response_type: 'code',
+      response_type: 'token id_token',   // implicit flow — id_token comes back in URL hash
       scope: 'openid email profile',
       prompt: 'select_account',
-      access_type: 'online',
+      nonce: Math.random().toString(36).slice(2), // required for id_token in implicit flow
     });
-
-    // Full page redirect — works on all browsers, no popup issues
     window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   };
 

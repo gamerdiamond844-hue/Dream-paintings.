@@ -79,13 +79,15 @@ const googleAuth = async (req, res) => {
   if (!credential) return res.status(400).json({ message: 'Google credential required' });
 
   try {
-    // Verify token with Google
+    console.log('[googleAuth] verifying id_token...');
+    // verifyIdToken works for both implicit flow id_token and code-exchange id_token
     const ticket = await googleClient.verifyIdToken({
       idToken: credential,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
     const payload = ticket.getPayload();
     const { sub: googleId, email, name, picture } = payload;
+    console.log('[googleAuth] token valid, email:', email);
 
     if (!email) return res.status(400).json({ message: 'Could not retrieve email from Google account' });
 
@@ -95,7 +97,6 @@ const googleAuth = async (req, res) => {
 
     if (user) {
       if (user.is_banned) return res.status(403).json({ message: 'Your account has been banned' });
-      // Link google_id if signing in via email match for the first time
       if (!user.google_id) {
         await pool.query(
           'UPDATE users SET google_id=$1, auth_provider=$2, avatar_url=COALESCE(avatar_url,$3) WHERE id=$4',
@@ -105,20 +106,22 @@ const googleAuth = async (req, res) => {
         user.auth_provider = 'google';
         if (!user.avatar_url) user.avatar_url = picture;
       }
+      console.log('[googleAuth] existing user logged in:', user.email);
     } else {
-      // Auto-create new account
       const insertResult = await pool.query(
         'INSERT INTO users (name, email, google_id, auth_provider, avatar_url, role) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
         [name, email, googleId, 'google', picture, 'user']
       );
       user = insertResult.rows[0];
+      console.log('[googleAuth] new user created:', user.email);
     }
 
     const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    console.log('[googleAuth] JWT issued for user id:', user.id);
     const { password: _, ...safeUser } = user;
     res.json({ token, user: safeUser });
   } catch (err) {
-    console.error('Google auth error:', err.message);
+    console.error('[googleAuth] error:', err.message);
     res.status(401).json({ message: 'Invalid or expired Google token' });
   }
 };

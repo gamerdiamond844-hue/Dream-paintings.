@@ -1,51 +1,79 @@
 import { useEffect, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 export default function GoogleCallback() {
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { updateUser } = useAuth();
-  const called = useRef(false); // prevent double-call in React StrictMode
+  const called = useRef(false);
 
   useEffect(() => {
     if (called.current) return;
     called.current = true;
 
-    const code = searchParams.get('code');
-    const error = searchParams.get('error');
+    // Google returns tokens in the URL hash for implicit flow
+    // e.g. #access_token=...&id_token=...&token_type=Bearer
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    const idToken = params.get('id_token');
+    const error = params.get('error');
 
-    if (error || !code) {
+    console.log('[GoogleCallback] hash params:', hash ? 'present' : 'empty');
+    console.log('[GoogleCallback] id_token:', idToken ? 'received' : 'missing');
+    console.log('[GoogleCallback] error:', error || 'none');
+
+    if (error) {
       toast.error('Google login was cancelled.');
       navigate('/login', { replace: true });
       return;
     }
 
-    const redirectUri = `${window.location.origin}/auth/google/callback`;
+    if (!idToken) {
+      // Also check query params (some flows use ?code= instead)
+      const queryParams = new URLSearchParams(window.location.search);
+      const code = queryParams.get('code');
+      if (code) {
+        // Fallback: code flow — exchange via backend
+        console.log('[GoogleCallback] falling back to code exchange');
+        const redirectUri = `${window.location.origin}/auth/google/callback`;
+        api.post('/auth/google/exchange', { code, redirect_uri: redirectUri })
+          .then(({ data }) => completeLogin(data.credential))
+          .catch(err => {
+            console.error('[GoogleCallback] exchange error:', err.response?.data || err.message);
+            toast.error(err.response?.data?.message || 'Google sign-in failed.');
+            navigate('/login', { replace: true });
+          });
+        return;
+      }
 
-    // Step 1: exchange code for id_token
-    api.post('/auth/google/exchange', { code, redirect_uri: redirectUri })
-      .then(({ data: { credential } }) => {
-        // Step 2: verify id_token + login/create user
-        return api.post('/auth/google', { credential });
-      })
+      toast.error('No token received from Google. Please try again.');
+      navigate('/login', { replace: true });
+      return;
+    }
+
+    completeLogin(idToken);
+  }, []);
+
+  const completeLogin = (credential) => {
+    console.log('[GoogleCallback] sending credential to backend...');
+    api.post('/auth/google', { credential })
       .then(({ data }) => {
-        // Step 3: persist JWT + user exactly like normal login
+        console.log('[GoogleCallback] login success, user:', data.user?.email);
+        // Persist token + user
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(data.user));
         updateUser(data.user);
         toast.success(`Welcome, ${data.user.name}! 🎉`);
-        // Step 4: redirect to home (or admin)
         navigate(data.user.role === 'admin' ? '/super-admin-portal-xyz' : '/', { replace: true });
       })
       .catch(err => {
-        const msg = err.response?.data?.message || 'Google sign-in failed. Please try again.';
-        toast.error(msg);
+        console.error('[GoogleCallback] auth error:', err.response?.data || err.message);
+        toast.error(err.response?.data?.message || 'Google sign-in failed. Please try again.');
         navigate('/login', { replace: true });
       });
-  }, []);
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white">
