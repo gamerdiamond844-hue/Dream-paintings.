@@ -68,7 +68,13 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
-  const updateUser = (data) => setUser(prev => ({ ...prev, ...data }));
+  const updateUser = (data) => {
+    setUser(prev => {
+      const updated = prev ? { ...prev, ...data } : data;
+      localStorage.setItem('user', JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, logout, updateUser }}>

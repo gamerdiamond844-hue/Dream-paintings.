@@ -1,78 +1,27 @@
-import { useEffect, useCallback, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import toast from 'react-hot-toast';
-import { useAuth } from '../context/AuthContext';
+import { useState } from 'react';
 
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
   || '456044016552-smhrefuqv5m5vuv6h1uai7kk8bog5kg0.apps.googleusercontent.com';
 
-export default function GoogleAuthButton({ redirectTo = '/' }) {
-  const { loginWithGoogle } = useAuth();
-  const navigate = useNavigate();
+export default function GoogleAuthButton() {
   const [loading, setLoading] = useState(false);
 
-  // Listen for the token coming back from the OAuth popup window
-  useEffect(() => {
-    const onMessage = async (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'GOOGLE_AUTH_SUCCESS') return;
-
-      const { credential } = event.data;
-      if (!credential) return;
-
-      setLoading(true);
-      try {
-        const user = await loginWithGoogle(credential);
-        toast.success(`Welcome, ${user.name}! 🎉`);
-        navigate(user.role === 'admin' ? '/super-admin-portal-xyz' : redirectTo);
-      } catch (err) {
-        toast.error(err.response?.data?.message || 'Google sign-in failed');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, [loginWithGoogle, navigate, redirectTo]);
-
   const handleClick = () => {
-    if (loading) return;
+    setLoading(true);
 
-    const width = 500;
-    const height = 600;
-    const left = window.screenX + (window.outerWidth - width) / 2;
-    const top = window.screenY + (window.outerHeight - height) / 2;
+    const redirectUri = `${window.location.origin}/auth/google/callback`;
 
     const params = new URLSearchParams({
       client_id: CLIENT_ID,
-      redirect_uri: `${window.location.origin}/auth/google/callback`,
+      redirect_uri: redirectUri,
       response_type: 'code',
       scope: 'openid email profile',
       prompt: 'select_account',
       access_type: 'online',
     });
 
-    const popup = window.open(
-      `https://accounts.google.com/o/oauth2/v2/auth?${params}`,
-      'GoogleLogin',
-      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
-    );
-
-    if (!popup || popup.closed) {
-      toast.error('Popup was blocked. Please allow popups for this site and try again.');
-      return;
-    }
-
-    setLoading(true);
-
-    // Poll to detect if user closed the popup without completing login
-    const pollClosed = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(pollClosed);
-        setLoading(false);
-      }
-    }, 500);
+    // Full page redirect — works on all browsers, no popup issues
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   };
 
   return (
@@ -88,7 +37,7 @@ export default function GoogleAuthButton({ redirectTo = '/' }) {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
           </svg>
-          Signing in...
+          Redirecting to Google...
         </>
       ) : (
         <>
