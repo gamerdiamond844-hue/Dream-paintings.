@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
-
 export default function GoogleAuthButton({ redirectTo = '/' }) {
   const { loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+
+  const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   const handleCredentialResponse = useCallback(async ({ credential }) => {
     setLoading(true);
@@ -23,73 +23,67 @@ export default function GoogleAuthButton({ redirectTo = '/' }) {
     }
   }, [loginWithGoogle, navigate, redirectTo]);
 
-  const initGoogleSDK = useCallback(() => {
-    if (!window.google?.accounts?.id) return;
-    window.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
-      callback: handleCredentialResponse,
-      ux_mode: 'popup',
-      cancel_on_tap_outside: true,
-    });
-  }, [handleCredentialResponse]);
-
   useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return;
-    if (window.google?.accounts?.id) {
-      initGoogleSDK();
-      return;
+    if (!CLIENT_ID) return;
+    const tryInit = () => {
+      if (!window.google?.accounts?.id) return false;
+      window.google.accounts.id.initialize({
+        client_id: CLIENT_ID,
+        callback: handleCredentialResponse,
+        ux_mode: 'popup',
+      });
+      return true;
+    };
+    if (!tryInit()) {
+      const t = setInterval(() => { if (tryInit()) clearInterval(t); }, 150);
+      return () => clearInterval(t);
     }
-    // Poll until SDK is ready (handles async load)
-    const interval = setInterval(() => {
-      if (window.google?.accounts?.id) {
-        clearInterval(interval);
-        initGoogleSDK();
-      }
-    }, 100);
-    return () => clearInterval(interval);
-  }, [initGoogleSDK]);
+  }, [CLIENT_ID, handleCredentialResponse]);
 
   const handleClick = () => {
     if (loading) return;
-    if (!window.google?.accounts?.id) {
-      toast.error('Google Sign-In is not ready yet. Please try again.');
+
+    if (!CLIENT_ID) {
+      toast.error('Google Client ID is missing. Check VITE_GOOGLE_CLIENT_ID in .env and restart the dev server.');
       return;
     }
-    // Re-initialize with latest callback then prompt
+
+    if (!window.google?.accounts?.id) {
+      toast.error('Google SDK not loaded. Check your internet connection.');
+      return;
+    }
+
     window.google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID,
+      client_id: CLIENT_ID,
       callback: handleCredentialResponse,
       ux_mode: 'popup',
-      cancel_on_tap_outside: true,
     });
+
     window.google.accounts.id.prompt((notification) => {
       if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        // One-tap was suppressed — open full OAuth popup as fallback
+        // Fallback: direct OAuth popup
         const params = new URLSearchParams({
-          client_id: GOOGLE_CLIENT_ID,
+          client_id: CLIENT_ID,
           redirect_uri: window.location.origin,
           response_type: 'token',
           scope: 'openid email profile',
           prompt: 'select_account',
         });
-        const popup = window.open(
+        window.open(
           `https://accounts.google.com/o/oauth2/v2/auth?${params}`,
           'google-login',
           'width=500,height=600,left=200,top=100'
         );
-        if (!popup) toast.error('Popup blocked. Please allow popups for this site.');
       }
     });
   };
-
-  if (!GOOGLE_CLIENT_ID) return null;
 
   return (
     <button
       type="button"
       onClick={handleClick}
       disabled={loading}
-      className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 active:scale-[0.98] transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+      className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-white border-2 border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-300 active:scale-[0.98] transition-all shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
     >
       {loading ? (
         <>
@@ -97,7 +91,7 @@ export default function GoogleAuthButton({ redirectTo = '/' }) {
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
           </svg>
-          <span>Signing in...</span>
+          Signing in...
         </>
       ) : (
         <>
@@ -107,7 +101,7 @@ export default function GoogleAuthButton({ redirectTo = '/' }) {
             <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
             <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
           </svg>
-          <span>Continue with Google</span>
+          Continue with Google
         </>
       )}
     </button>
