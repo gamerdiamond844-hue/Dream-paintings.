@@ -3,81 +3,76 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 
+const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
+  || '456044016552-smhrefuqv5m5vuv6h1uai7kk8bog5kg0.apps.googleusercontent.com';
+
 export default function GoogleAuthButton({ redirectTo = '/' }) {
   const { loginWithGoogle } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
 
-  // Fallback hardcoded so button never disappears if Vite env fails to inject
-  const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
-    || '456044016552-smhrefuqv5m5vuv6h1uai7kk8bog5kg0.apps.googleusercontent.com';
-
-  const handleCredentialResponse = useCallback(async ({ credential }) => {
-    setLoading(true);
-    try {
-      const user = await loginWithGoogle(credential);
-      toast.success(`Welcome, ${user.name}! 🎉`);
-      navigate(user.role === 'admin' ? '/super-admin-portal-xyz' : redirectTo);
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'Google sign-in failed');
-    } finally {
-      setLoading(false);
-    }
-  }, [loginWithGoogle, navigate, redirectTo]);
-
+  // Listen for the token coming back from the OAuth popup window
   useEffect(() => {
-    if (!CLIENT_ID) return;
-    const tryInit = () => {
-      if (!window.google?.accounts?.id) return false;
-      window.google.accounts.id.initialize({
-        client_id: CLIENT_ID,
-        callback: handleCredentialResponse,
-        ux_mode: 'popup',
-      });
-      return true;
+    const onMessage = async (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'GOOGLE_AUTH_SUCCESS') return;
+
+      const { credential } = event.data;
+      if (!credential) return;
+
+      setLoading(true);
+      try {
+        const user = await loginWithGoogle(credential);
+        toast.success(`Welcome, ${user.name}! 🎉`);
+        navigate(user.role === 'admin' ? '/super-admin-portal-xyz' : redirectTo);
+      } catch (err) {
+        toast.error(err.response?.data?.message || 'Google sign-in failed');
+      } finally {
+        setLoading(false);
+      }
     };
-    if (!tryInit()) {
-      const t = setInterval(() => { if (tryInit()) clearInterval(t); }, 150);
-      return () => clearInterval(t);
-    }
-  }, [CLIENT_ID, handleCredentialResponse]);
+
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, [loginWithGoogle, navigate, redirectTo]);
 
   const handleClick = () => {
     if (loading) return;
 
-    if (!CLIENT_ID) {
-      toast.error('Google Client ID is missing. Check VITE_GOOGLE_CLIENT_ID in .env and restart the dev server.');
-      return;
-    }
+    const width = 500;
+    const height = 600;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
 
-    if (!window.google?.accounts?.id) {
-      toast.error('Google SDK not loaded. Check your internet connection.');
-      return;
-    }
-
-    window.google.accounts.id.initialize({
+    const params = new URLSearchParams({
       client_id: CLIENT_ID,
-      callback: handleCredentialResponse,
-      ux_mode: 'popup',
+      redirect_uri: `${window.location.origin}/auth/google/callback`,
+      response_type: 'code',
+      scope: 'openid email profile',
+      prompt: 'select_account',
+      access_type: 'online',
     });
 
-    window.google.accounts.id.prompt((notification) => {
-      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        // Fallback: direct OAuth popup
-        const params = new URLSearchParams({
-          client_id: CLIENT_ID,
-          redirect_uri: window.location.origin,
-          response_type: 'token',
-          scope: 'openid email profile',
-          prompt: 'select_account',
-        });
-        window.open(
-          `https://accounts.google.com/o/oauth2/v2/auth?${params}`,
-          'google-login',
-          'width=500,height=600,left=200,top=100'
-        );
+    const popup = window.open(
+      `https://accounts.google.com/o/oauth2/v2/auth?${params}`,
+      'GoogleLogin',
+      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+    );
+
+    if (!popup || popup.closed) {
+      toast.error('Popup was blocked. Please allow popups for this site and try again.');
+      return;
+    }
+
+    setLoading(true);
+
+    // Poll to detect if user closed the popup without completing login
+    const pollClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(pollClosed);
+        setLoading(false);
       }
-    });
+    }, 500);
   };
 
   return (

@@ -48,6 +48,25 @@ const login = async (req, res) => {
   }
 };
 
+const googleExchange = async (req, res) => {
+  const { code, redirect_uri } = req.body;
+  if (!code || !redirect_uri) return res.status(400).json({ message: 'Code and redirect_uri required' });
+
+  try {
+    const client = new OAuth2Client(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      redirect_uri
+    );
+    const { tokens } = await client.getToken(code);
+    // Return the id_token as credential so the existing googleAuth handler can verify it
+    res.json({ credential: tokens.id_token });
+  } catch (err) {
+    console.error('Google exchange error:', err.message);
+    res.status(401).json({ message: 'Failed to exchange Google auth code' });
+  }
+};
+
 const googleAuth = async (req, res) => {
   // Check DB setting first, fall back to env var
   const settingRow = await pool.query("SELECT value FROM settings WHERE key='google_auth_enabled'").catch(() => ({ rows: [] }));
@@ -140,4 +159,4 @@ const updateProfile = async (req, res) => {
   }
 };
 
-module.exports = { register, login, googleAuth, getMe, updateProfile };
+module.exports = { register, login, googleExchange, googleAuth, getMe, updateProfile };

@@ -34,6 +34,7 @@ const IntellectualPropertyPage = lazy(() => import('./pages/IntellectualProperty
 const DmcaPage           = lazy(() => import('./pages/DmcaPage'));
 const CommunityGuidelinesPage  = lazy(() => import('./pages/CommunityGuidelinesPage'));
 const WithdrawalPage           = lazy(() => import('./pages/WithdrawalPage'));
+const GoogleCallback           = lazy(() => import('./pages/GoogleCallback'));
 
 // Minimal fallback shown while a lazy chunk loads
 function PageLoader() {
@@ -92,6 +93,7 @@ export default function App() {
           <Route path="/dmca" element={<DmcaPage />} />
           <Route path="/community-guidelines" element={<CommunityGuidelinesPage />} />
           <Route path="/withdrawals" element={<ProtectedRoute roles={['artist', 'admin']}><WithdrawalPage /></ProtectedRoute>} />
+          <Route path="/auth/google/callback" element={<GoogleCallback />} />
         </Routes>
         </Suspense>
         </AppShell>
