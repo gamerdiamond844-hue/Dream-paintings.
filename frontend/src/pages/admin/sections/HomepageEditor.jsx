@@ -38,9 +38,14 @@ export default function HomepageEditor() {
   const [newT, setNewT] = useState(EMPTY_T);
   const [editT, setEditT] = useState(null);
   const [tab, setTab] = useState('sections');
+  const [googleEnabled, setGoogleEnabled] = useState(true);
+  const [googleToggling, setGoogleToggling] = useState(false);
 
   const load = () => {
-    api.get('/admin/homepage/config').then(r => setConfig(r.data));
+    api.get('/admin/homepage/config').then(r => {
+      setConfig(r.data);
+      setGoogleEnabled(r.data.google_auth_enabled !== false && r.data.google_auth_enabled !== 'false');
+    });
     api.get('/admin/homepage/testimonials').then(r => setTestimonials(r.data));
     api.get('/admin/master-artists').then(r => setArtists(r.data));
   };
@@ -81,6 +86,14 @@ export default function HomepageEditor() {
     setArtists(a => a.map(x => x.id === artist.id ? { ...x, is_master_artist: !x.is_master_artist } : x));
   };
 
+  const handleGoogleToggle = async (enabled) => {
+    setGoogleToggling(true);
+    try {
+      await api.put('/admin/settings/google-auth', { enabled });
+      setGoogleEnabled(enabled);
+    } catch { /* ignore */ } finally { setGoogleToggling(false); }
+  };
+
   if (!config) return (
     <div className="grid grid-cols-2 gap-4">
       {[...Array(6)].map((_, i) => <div key={i} className="skeleton h-20 rounded-2xl" />)}
@@ -91,6 +104,7 @@ export default function HomepageEditor() {
     { id: 'sections', label: 'Sections & Titles' },
     { id: 'artists', label: 'Master Artists' },
     { id: 'testimonials', label: 'Testimonials' },
+    { id: 'security', label: 'Security' },
   ];
 
   return (
@@ -261,6 +275,30 @@ export default function HomepageEditor() {
               ))}
             </div>
           )}
+        </div>
+      )}
+      {/* Security Settings */}
+      {tab === 'security' && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-5 max-w-lg">
+          <h3 className="font-semibold text-gray-900 text-sm uppercase tracking-wider">Authentication Settings</h3>
+          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl">
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Google Sign-In</p>
+              <p className="text-xs text-gray-500 mt-0.5">Allow users to login with their Google account</p>
+            </div>
+            <button
+              onClick={() => handleGoogleToggle(!googleEnabled)}
+              disabled={googleToggling}
+              className={`relative w-11 h-6 rounded-full transition-colors disabled:opacity-50 ${
+                googleEnabled ? 'bg-red-500' : 'bg-gray-200'
+              }`}
+            >
+              <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                googleEnabled ? 'translate-x-5' : ''
+              }`} />
+            </button>
+          </div>
+          <p className="text-xs text-gray-400">Changes take effect immediately without a server restart.</p>
         </div>
       )}
     </div>

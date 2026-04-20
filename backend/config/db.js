@@ -266,6 +266,14 @@ const initDB = async () => {
       ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_flagged BOOLEAN DEFAULT FALSE;
       ALTER TABLE messages ADD COLUMN IF NOT EXISTS deleted BOOLEAN DEFAULT FALSE;
     `);
+    // ── Google OAuth migrations ─────────────────────────────────────────────
+    await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(255) UNIQUE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_provider VARCHAR(20) DEFAULT 'email'
+        CHECK (auth_provider IN ('email', 'google'));
+      ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
+    `);
+
     // ── Verification system migrations ────────────────────────────────────
     await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;

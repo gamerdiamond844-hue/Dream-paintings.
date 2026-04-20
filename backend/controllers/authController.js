@@ -1,6 +1,9 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 const { pool } = require('../config/db');
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const register = async (req, res) => {
   const { name, email, password, role = 'user' } = req.body;
@@ -29,7 +32,11 @@ const login = async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM users WHERE email=$1', [email]);
     const user = result.rows[0];
-    if (!user || !(await bcrypt.compare(password, user.password)))
+    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    // Block password login for Google-only accounts
+    if (user.auth_provider === 'google' && !user.password)
+      return res.status(401).json({ message: 'This account uses Google Sign-In. Please continue with Google.' });
+    if (!user.password || !(await bcrypt.compare(password, user.password)))
       return res.status(401).json({ message: 'Invalid credentials' });
     if (user.is_banned)
       return res.status(403).json({ message: 'Your account has been banned' });
@@ -38,6 +45,62 @@ const login = async (req, res) => {
     res.json({ token, user: safeUser });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+};
+
+const googleAuth = async (req, res) => {
+  // Check DB setting first, fall back to env var
+  const settingRow = await pool.query("SELECT value FROM settings WHERE key='google_auth_enabled'").catch(() => ({ rows: [] }));
+  const isEnabled = settingRow.rows.length
+    ? settingRow.rows[0].value !== 'false'
+    : process.env.GOOGLE_AUTH_ENABLED !== 'false';
+  if (!isEnabled) return res.status(403).json({ message: 'Google login is currently disabled.' });
+
+  const { credential } = req.body;
+  if (!credential) return res.status(400).json({ message: 'Google credential required' });
+
+  try {
+    // Verify token with Google
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const { sub: googleId, email, name, picture } = payload;
+
+    if (!email) return res.status(400).json({ message: 'Could not retrieve email from Google account' });
+
+    // Check if user exists by google_id or email
+    let result = await pool.query('SELECT * FROM users WHERE google_id=$1 OR email=$2', [googleId, email]);
+    let user = result.rows[0];
+
+    if (user) {
+      if (user.is_banned) return res.status(403).json({ message: 'Your account has been banned' });
+      // Link google_id if signing in via email match for the first time
+      if (!user.google_id) {
+        await pool.query(
+          'UPDATE users SET google_id=$1, auth_provider=$2, avatar_url=COALESCE(avatar_url,$3) WHERE id=$4',
+          [googleId, 'google', picture, user.id]
+        );
+        user.google_id = googleId;
+        user.auth_provider = 'google';
+        if (!user.avatar_url) user.avatar_url = picture;
+      }
+    } else {
+      // Auto-create new account
+      const insertResult = await pool.query(
+        'INSERT INTO users (name, email, google_id, auth_provider, avatar_url, role) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+        [name, email, googleId, 'google', picture, 'user']
+      );
+      user = insertResult.rows[0];
+    }
+
+    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    const { password: _, ...safeUser } = user;
+    res.json({ token, user: safeUser });
+  } catch (err) {
+    console.error('Google auth error:', err.message);
+    res.status(401).json({ message: 'Invalid or expired Google token' });
   }
 };
 
@@ -77,4 +140,4 @@ const updateProfile = async (req, res) => {
   }
 };
 
-module.exports = { register, login, getMe, updateProfile };
+module.exports = { register, login, googleAuth, getMe, updateProfile };

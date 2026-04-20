@@ -11,6 +11,7 @@ const {
   getHomepageConfig, saveHomepageConfig,
   getTestimonials, createTestimonial, updateTestimonial, deleteTestimonial,
   setMasterArtist, getMasterArtists,
+  toggleGoogleAuth,
 } = require('../controllers/adminController');
 const { getAllOrders, updateOrderStatus, uploadQRCode } = require('../controllers/orderController');
 const {
@@ -55,6 +56,7 @@ router.get('/homepage/testimonials', getTestimonials);
 router.post('/homepage/testimonials', createTestimonial);
 router.put('/homepage/testimonials/:id', updateTestimonial);
 router.delete('/homepage/testimonials/:id', deleteTestimonial);
+router.put('/settings/google-auth', toggleGoogleAuth);
 
 // Withdrawal management
 router.get('/withdrawals/stats', adminGetWithdrawalStats);

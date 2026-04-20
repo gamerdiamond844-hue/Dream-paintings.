@@ -46,6 +46,7 @@ const getAllUsers = async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT u.id, u.name, u.email, u.role, u.avatar_url, u.created_at, u.is_banned,
+        COALESCE(u.auth_provider, 'email') as auth_provider,
         COUNT(DISTINCT p.id) as painting_count,
         COUNT(DISTINCT s.id) as purchase_count
        FROM users u
@@ -523,6 +524,21 @@ const getPublicHomepageData = async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 };
 
+const toggleGoogleAuth = async (req, res) => {
+  const { enabled } = req.body;
+  try {
+    await pool.query(
+      `INSERT INTO settings (key, value, updated_at) VALUES ('google_auth_enabled', $1, NOW())
+       ON CONFLICT (key) DO UPDATE SET value=$1, updated_at=NOW()`,
+      [enabled ? 'true' : 'false']
+    );
+    // Reflect in runtime env so the auth controller picks it up immediately
+    process.env.GOOGLE_AUTH_ENABLED = enabled ? 'true' : 'false';
+    await log(req.user.id, `${enabled ? 'Enabled' : 'Disabled'} Google login`, 'settings', null, null);
+    res.json({ message: `Google login ${enabled ? 'enabled' : 'disabled'}` });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+};
+
 module.exports = {
   getStats, getAllUsers, deleteUser, banUser, promoteUser,
   getAllPaintings, getPendingPaintings, updatePaintingAdmin, softDeletePainting, restorePainting, bulkAction,
@@ -533,4 +549,5 @@ module.exports = {
   getTestimonials, createTestimonial, updateTestimonial, deleteTestimonial,
   setMasterArtist, getMasterArtists,
   getPublicHomepageData,
+  toggleGoogleAuth,
 };

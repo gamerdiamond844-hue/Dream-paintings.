@@ -4,6 +4,7 @@ import { Eye, EyeOff, Palette, User, Brush } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
 import LoadingSpinner from '../components/LoadingSpinner';
+import GoogleAuthButton from '../components/GoogleAuthButton';
 
 export default function Register() {
   const { register } = useAuth();
@@ -90,6 +91,14 @@ export default function Register() {
             Already have an account?{' '}
             <Link to="/login" className="text-red-600 font-semibold hover:underline">Sign in</Link>
           </p>
+
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs text-gray-400 font-medium">OR</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+
+          <GoogleAuthButton />
         </div>
       </div>
     </div>
